@@ -1,0 +1,106 @@
+{
+  "project_info": {
+    "project_number": "498819383401",
+    "project_id": "luma-v1-af463",
+    "storage_bucket": "luma-v1-af463.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:498819383401:android:9d65191fdff3f3bc1922f8",
+        "android_client_info": {
+          "package_name": "com.example.luma_v1"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "498819383401-7vgn39k7dlaqid8f2np6c1hdhp3js3tu.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAH7rbbI5cVx2wTEiqRLaIZtFfh_Gcl6Ew"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "498819383401-7vgn39k7dlaqid8f2np6c1hdhp3js3tu.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "498819383401-hi06mi6g0boed70ap4gis7cj6k0298f8.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.lumaV1"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:498819383401:android:16106502e08fa72a1922f8",
+        "android_client_info": {
+          "package_name": "com.luma.social"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "498819383401-39jsg9udp17u75p849j31jkhg0g9t6c9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.luma.social",
+            "certificate_hash": "b705b8680de36cfe3ffb524d38578cc08c64c385"
+          }
+        },
+        {
+          "client_id": "498819383401-b43eievbk79m4t9uugi9ivfhrfhm0892.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.luma.social",
+            "certificate_hash": "82752c7e61eca35805e11030480df21c590b213f"
+          }
+        },
+        {
+          "client_id": "498819383401-r7igruh1h9h6lpl76qmb3dtmha2ueeeq.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.luma.social",
+            "certificate_hash": "4a9d7cde8fd90ee356dd01a55b1f2c8934e7fe86"
+          }
+        },
+        {
+          "client_id": "498819383401-7vgn39k7dlaqid8f2np6c1hdhp3js3tu.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAH7rbbI5cVx2wTEiqRLaIZtFfh_Gcl6Ew"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "498819383401-7vgn39k7dlaqid8f2np6c1hdhp3js3tu.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "498819383401-hi06mi6g0boed70ap4gis7cj6k0298f8.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.lumaV1"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
