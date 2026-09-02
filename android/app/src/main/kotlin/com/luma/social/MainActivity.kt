@@ -1,4 +1,4 @@
-package com.luma.luma_v1
+package com.luma.social
 
 import io.flutter.embedding.android.FlutterActivity
 
