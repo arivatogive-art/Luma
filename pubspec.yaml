@@ -1,4 +1,4 @@
-name: luma_v1
+﻿name: luma_v1
 description: "A new Flutter project."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
@@ -58,6 +58,7 @@ dependencies:
   url_launcher: ^6.3.2
   package_info_plus: 8.3.0
   flutter_local_notifications: 19.4.0
+  web: 1.1.1
 
 dev_dependencies:
   flutter_test:
@@ -111,3 +112,4 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
