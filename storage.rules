@@ -1,0 +1,352 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function hasAcceptedFriendMirror(ownerId, viewerId) {
+      return isSignedIn()
+        && firestore.exists(/databases/(default)/documents/users/$(ownerId)/friends/$(viewerId))
+        && firestore.get(
+          /databases/(default)/documents/users/$(ownerId)/friends/$(viewerId)
+        ).data.status == 'accepted';
+    }
+
+    function isMessengerParticipant(conversationId) {
+      return isSignedIn()
+        && firestore.exists(/databases/(default)/documents/conversations/$(conversationId))
+        && request.auth.uid in firestore.get(
+          /databases/(default)/documents/conversations/$(conversationId)
+        ).data.participantIds;
+    }
+
+    function canReadFeedImage(userId, postId) {
+      return isOwner(userId)
+        || (
+          isSignedIn()
+          && firestore.exists(/databases/(default)/documents/feed_posts/$(postId))
+          && (
+            firestore.get(/databases/(default)/documents/feed_posts/$(postId)).data.userId == request.auth.uid
+            || firestore.get(/databases/(default)/documents/feed_posts/$(postId)).data.authorId == request.auth.uid
+            || firestore.get(/databases/(default)/documents/feed_posts/$(postId)).data.visibility == 'public'
+            || (
+              firestore.get(/databases/(default)/documents/feed_posts/$(postId)).data.visibility == 'friends'
+              && (
+                hasAcceptedFriendMirror(
+                  firestore.get(/databases/(default)/documents/feed_posts/$(postId)).data.userId,
+                  request.auth.uid
+                )
+                || hasAcceptedFriendMirror(
+                  firestore.get(/databases/(default)/documents/feed_posts/$(postId)).data.authorId,
+                  request.auth.uid
+                )
+              )
+            )
+          )
+        );
+    }
+
+    function canReadProfileMomentMedia(userId, momentId) {
+      return isOwner(userId)
+        || (
+          isSignedIn()
+          && firestore.exists(
+            /databases/(default)/documents/users/$(userId)/profile_moments/$(momentId)
+          )
+        );
+    }
+
+    function canReadStoryMedia(userId, storyId) {
+      return isOwner(userId)
+        || (
+          isSignedIn()
+          && firestore.exists(/databases/(default)/documents/stories/$(storyId))
+          && firestore.get(/databases/(default)/documents/stories/$(storyId)).data.isArchived == false
+          && firestore.get(/databases/(default)/documents/stories/$(storyId)).data.expiresAt > request.time
+          && firestore.get(/databases/(default)/documents/stories/$(storyId)).data.authorId == userId
+          && (
+            firestore.get(/databases/(default)/documents/stories/$(storyId)).data.authorId == request.auth.uid
+            || firestore.get(/databases/(default)/documents/stories/$(storyId)).data.visibilityType == 'public'
+            || (
+              firestore.get(/databases/(default)/documents/stories/$(storyId)).data.visibilityType == 'friendsOnly'
+              && hasAcceptedFriendMirror(
+                firestore.get(/databases/(default)/documents/stories/$(storyId)).data.authorId,
+                request.auth.uid
+              )
+            )
+          )
+        );
+    }
+
+    function isValidImageContentType() {
+      return request.resource != null
+        && request.resource.contentType in [
+          'image/jpeg',
+          'image/jpg',
+          'image/png',
+          'image/webp'
+        ];
+    }
+
+    function isValidVideoContentType() {
+      return request.resource != null
+        && request.resource.contentType in [
+          'video/mp4',
+          'video/mpeg',
+          'video/quicktime',
+          'video/webm'
+        ];
+    }
+
+    function isValidAudioContentType() {
+      return request.resource != null
+        && request.resource.contentType in [
+          'audio/mpeg',
+          'audio/mp3',
+          'audio/aac',
+          'audio/mp4',
+          'audio/wav',
+          'audio/webm'
+        ];
+    }
+
+    function isValidMessengerFileContentType() {
+      return request.resource != null
+        && request.resource.contentType in [
+          'application/pdf',
+          'text/plain',
+          'text/csv',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-powerpoint',
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          'application/zip',
+          'application/x-zip-compressed'
+        ];
+    }
+
+    function isValidVerificationContentType() {
+      return request.resource != null
+        && request.resource.contentType in [
+          'image/jpeg',
+          'image/jpg',
+          'image/png',
+          'image/webp',
+          'application/pdf'
+        ];
+    }
+
+    function isValidVerificationDocumentType(documentType) {
+      return documentType in [
+        'identity_front',
+        'identity_back',
+        'identity_page',
+        'selfie',
+        'public_proof',
+        'business_proof',
+        'additional'
+      ];
+    }
+
+    function isValidVerificationDocumentSize() {
+      return request.resource != null
+        && request.resource.size > 0
+        && (
+          (
+            request.resource.contentType == 'application/pdf'
+            && request.resource.size <= 15728640
+          )
+          ||
+          (
+            request.resource.contentType != 'application/pdf'
+            && request.resource.size <= 10485760
+          )
+        );
+    }
+
+    function isValidFeedImageSize() {
+      return request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 10485760;
+    }
+
+    function isValidProfileImageSize() {
+      return request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 10485760;
+    }
+
+    function isValidProfileMomentImageSize() {
+      return request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 10485760;
+    }
+
+    function isValidStoryImageSize() {
+      return request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 15728640;
+    }
+
+    function isValidStoryVideoSize() {
+      return request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 104857600;
+    }
+
+    function isValidMessengerImageSize() {
+      return request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 15728640;
+    }
+
+    function isValidMessengerAudioSize() {
+      return request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 52428800;
+    }
+
+    function isValidMessengerFileSize() {
+      return request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 52428800;
+    }
+
+    match /feed_images/{userId}/{postId}/{fileName} {
+      allow read: if canReadFeedImage(userId, postId);
+      // Nutzer laden ausschließlich das Original hoch.
+      // feed_preview.jpg wird nur serverseitig durch Cloud Functions erzeugt.
+      allow create, update: if isOwner(userId)
+        && fileName == 'image.jpg'
+        && isValidImageContentType()
+        && isValidFeedImageSize();
+      allow delete: if isOwner(userId);
+    }
+
+    match /profile_media/{userId}/avatar/{fileName} {
+      allow read: if isSignedIn();
+      allow create, update: if isOwner(userId)
+        && fileName == 'image.jpg'
+        && isValidImageContentType()
+        && isValidProfileImageSize();
+      allow delete: if isOwner(userId);
+    }
+
+    match /profile_media/{userId}/cover/{fileName} {
+      allow read: if isSignedIn();
+      allow create, update: if isOwner(userId)
+        && fileName == 'image.jpg'
+        && isValidImageContentType()
+        && isValidProfileImageSize();
+      allow delete: if isOwner(userId);
+    }
+
+    match /profile_moment_media/{userId}/{momentId}/{fileName} {
+      allow read: if canReadProfileMomentMedia(userId, momentId);
+      allow create, update: if isOwner(userId)
+        && fileName == 'image.jpg'
+        && isValidImageContentType()
+        && isValidProfileMomentImageSize();
+      allow delete: if isOwner(userId);
+    }
+
+    match /story_media/{userId}/{storyId}/{fileName} {
+      allow read: if canReadStoryMedia(userId, storyId);
+      allow create, update: if isOwner(userId)
+        && (
+          (
+            fileName.matches('media\\.(jpg|jpeg|png|webp)$')
+            && isValidImageContentType()
+            && isValidStoryImageSize()
+          )
+          ||
+          (
+            fileName.matches('media\\.(mp4|mov|webm)$')
+            && isValidVideoContentType()
+            && isValidStoryVideoSize()
+          )
+        );
+      allow delete: if isOwner(userId);
+    }
+
+    match /messenger_media/{conversationId}/images/{senderUserId}/{fileName} {
+      allow read: if isMessengerParticipant(conversationId);
+      allow create, update: if isOwner(senderUserId)
+        && isMessengerParticipant(conversationId)
+        && fileName.matches('.*\\.(jpg|jpeg|png|webp)$')
+        && isValidImageContentType()
+        && isValidMessengerImageSize();
+      allow delete: if isOwner(senderUserId)
+        && isMessengerParticipant(conversationId);
+    }
+
+    match /messenger_media/{conversationId}/audio/{senderUserId}/{fileName} {
+      allow read: if isMessengerParticipant(conversationId);
+      allow create, update: if isOwner(senderUserId)
+        && isMessengerParticipant(conversationId)
+        && fileName.matches('.*\\.(mp3|aac|m4a|wav|webm)$')
+        && isValidAudioContentType()
+        && isValidMessengerAudioSize();
+      allow delete: if isOwner(senderUserId)
+        && isMessengerParticipant(conversationId);
+    }
+
+    match /messenger_media/{conversationId}/files/{senderUserId}/{fileName} {
+      allow read: if isMessengerParticipant(conversationId);
+      allow create, update: if isOwner(senderUserId)
+        && isMessengerParticipant(conversationId)
+        && fileName.matches('.*\\.(pdf|txt|csv|doc|docx|xls|xlsx|ppt|pptx|zip)$')
+        && isValidMessengerFileContentType()
+        && isValidMessengerFileSize();
+      allow delete: if isOwner(senderUserId)
+        && isMessengerParticipant(conversationId);
+    }
+
+    match /verification_documents/{userId}/{draftId}/{documentType}/{fileName} {
+      allow read: if isOwner(userId);
+
+      allow create: if isOwner(userId)
+        && isValidVerificationDocumentType(documentType)
+        && fileName.matches('.*\\.(jpg|jpeg|png|webp|pdf)$')
+        && isValidVerificationContentType()
+        && isValidVerificationDocumentSize();
+
+      allow update: if false;
+
+      allow delete: if isOwner(userId);
+    }
+function isPageOwner(pageId) {
+  return isSignedIn()
+    && firestore.exists(
+      /databases/(default)/documents/pages/$(pageId)
+    )
+    && firestore.get(
+      /databases/(default)/documents/pages/$(pageId)
+    ).data.ownerUserId == request.auth.uid;
+}
+
+match /page_media/{pageId}/{folder}/{fileName} {
+
+  allow read: if isSignedIn();
+
+  allow create, update: if isPageOwner(pageId)
+    && folder.matches('avatar|cover|gallery|posts')
+    && fileName.matches('.*\\.(jpg|jpeg|png|webp)$')
+    && isValidImageContentType()
+    && isValidProfileImageSize();
+
+  allow delete: if isPageOwner(pageId);
+}
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
