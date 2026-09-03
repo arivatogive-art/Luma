@@ -1,1 +1,45 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"luma-v1-af463","appId":"1:498819383401:android:16106502e08fa72a1922f8","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"luma-v1-af463","configurations":{"android":"1:498819383401:android:16106502e08fa72a1922f8","web":"1:498819383401:web:433a58fe8fb15cab1922f8"}}}}}}
+﻿{
+    "flutter":  {
+                    "platforms":  {
+                                      "android":  {
+                                                      "default":  {
+                                                                      "projectId":  "luma-v1-af463",
+                                                                      "appId":  "1:498819383401:android:16106502e08fa72a1922f8",
+                                                                      "fileOutput":  "android/app/google-services.json"
+                                                                  }
+                                                  },
+                                      "dart":  {
+                                                   "lib/firebase_options.dart":  {
+                                                                                     "projectId":  "luma-v1-af463",
+                                                                                     "configurations":  {
+                                                                                                            "android":  "1:498819383401:android:16106502e08fa72a1922f8",
+                                                                                                            "web":  "1:498819383401:web:433a58fe8fb15cab1922f8"
+                                                                                                        }
+                                                                                 }
+                                               }
+                                  }
+                },
+    "functions":  [
+                      {
+                          "source":  "functions",
+                          "codebase":  "default",
+                          "ignore":  [
+                                         "node_modules",
+                                         ".git",
+                                         "firebase-debug.log",
+                                         "firebase-debug.*.log",
+                                         "*.local"
+                                     ],
+                          "predeploy":  [
+                                            "npm --prefix \"$RESOURCE_DIR\" run build"
+                                        ]
+                      }
+                  ],
+    "firestore":  {
+                      "indexes":  "firestore.indexes.json",
+                      "rules":  "firestore.rules"
+                  },
+    "storage":  {
+                    "rules":  "storage.rules"
+                }
+}
