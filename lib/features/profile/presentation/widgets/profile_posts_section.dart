@@ -124,8 +124,9 @@ class _ProfilePostCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: theme.colorScheme.outlineVariant
-                  .withValues(alpha: 0.7),
+              color: theme.colorScheme.outlineVariant.withValues(
+                alpha: 0.7,
+              ),
             ),
           ),
           child: Column(
@@ -137,9 +138,8 @@ class _ProfilePostCard extends StatelessWidget {
                     radius: 20,
                     backgroundColor:
                         theme.colorScheme.surfaceContainerHighest,
-                    foregroundImage: avatarUrl.isNotEmpty
-                        ? NetworkImage(avatarUrl)
-                        : null,
+                    foregroundImage:
+                        avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
                     child: avatarUrl.isEmpty
                         ? const Icon(Icons.person_outline_rounded)
                         : null,
@@ -147,25 +147,21 @@ class _ProfilePostCard extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
                         Text(
                           displayName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style:
-                              theme.textTheme.titleSmall?.copyWith(
+                          style: theme.textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w800,
                           ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           _dateLabel(post.createdAt),
-                          style:
-                              theme.textTheme.bodySmall?.copyWith(
-                            color:
-                                theme.colorScheme.onSurfaceVariant,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ],
@@ -179,8 +175,7 @@ class _ProfilePostCard extends StatelessWidget {
                   post.contentText,
                   maxLines: 6,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyLarge
-                      ?.copyWith(height: 1.42),
+                  style: theme.textTheme.bodyLarge?.copyWith(height: 1.42),
                 ),
               ],
               if (post.hasImage) ...<Widget>[
@@ -191,17 +186,13 @@ class _ProfilePostCard extends StatelessWidget {
                     post.imageUrl,
                     width: double.infinity,
                     fit: BoxFit.cover,
-                    errorBuilder:
-                        (context, error, stackTrace) {
+                    errorBuilder: (context, error, stackTrace) {
                       return Container(
                         width: double.infinity,
                         height: 180,
-                        color: theme.colorScheme
-                            .surfaceContainerHighest,
+                        color: theme.colorScheme.surfaceContainerHighest,
                         alignment: Alignment.center,
-                        child: const Icon(
-                          Icons.broken_image_outlined,
-                        ),
+                        child: const Icon(Icons.broken_image_outlined),
                       );
                     },
                   ),
@@ -213,8 +204,7 @@ class _ProfilePostCard extends StatelessWidget {
                   width: double.infinity,
                   height: 96,
                   decoration: BoxDecoration(
-                    color: theme
-                        .colorScheme.surfaceContainerHighest,
+                    color: theme.colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   alignment: Alignment.center,
@@ -228,14 +218,17 @@ class _ProfilePostCard extends StatelessWidget {
                   ),
                 ),
               ],
+              if (post.isRepost && post.hasOriginalContent) ...<Widget>[
+                const SizedBox(height: 12),
+                _RepostPreview(post: post),
+              ],
               const SizedBox(height: 12),
               Row(
                 children: <Widget>[
                   Icon(
                     Icons.thumb_up_alt_outlined,
                     size: 18,
-                    color:
-                        theme.colorScheme.onSurfaceVariant,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                   const SizedBox(width: 5),
                   Text('${post.likeCount}'),
@@ -243,8 +236,7 @@ class _ProfilePostCard extends StatelessWidget {
                   Icon(
                     Icons.chat_bubble_outline_rounded,
                     size: 18,
-                    color:
-                        theme.colorScheme.onSurfaceVariant,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                   const SizedBox(width: 5),
                   Text('${post.commentCount}'),
@@ -265,6 +257,90 @@ class _ProfilePostCard extends StatelessWidget {
     final month = local.month.toString().padLeft(2, '0');
 
     return '$day.$month.${local.year}';
+  }
+}
+
+class _RepostPreview extends StatelessWidget {
+  const _RepostPreview({
+    required this.post,
+  });
+
+  final ProfilePostModel post;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.7),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          if (post.originalUsername.trim().isNotEmpty)
+            Text(
+              post.originalUsername.trim(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          if (post.originalUsername.trim().isNotEmpty &&
+              post.originalContentText.trim().isNotEmpty)
+            const SizedBox(height: 6),
+          if (post.originalContentText.trim().isNotEmpty)
+            Text(
+              post.originalContentText.trim(),
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium,
+            ),
+          if (post.originalImageUrl.trim().isNotEmpty) ...<Widget>[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.network(
+                post.originalImageUrl.trim(),
+                width: double.infinity,
+                height: 170,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return const SizedBox.shrink();
+                },
+              ),
+            ),
+          ],
+          if (post.originalVideoUrl.trim().isNotEmpty) ...<Widget>[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              height: 72,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              alignment: Alignment.center,
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Icon(Icons.play_circle_outline_rounded),
+                  SizedBox(width: 8),
+                  Text('Video'),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 
@@ -291,8 +367,7 @@ class _PostMessage extends StatelessWidget {
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: theme.colorScheme.outlineVariant
-              .withValues(alpha: 0.7),
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.7),
         ),
       ),
       child: Column(

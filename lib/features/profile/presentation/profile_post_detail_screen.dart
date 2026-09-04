@@ -94,11 +94,9 @@ class ProfilePostDetailScreen extends StatelessWidget {
                   errorBuilder: (context, error, stackTrace) {
                     return Container(
                       height: 220,
-                      color:
-                          theme.colorScheme.surfaceContainerHighest,
+                      color: theme.colorScheme.surfaceContainerHighest,
                       alignment: Alignment.center,
-                      child:
-                          const Icon(Icons.broken_image_outlined),
+                      child: const Icon(Icons.broken_image_outlined),
                     );
                   },
                 ),
@@ -167,10 +165,29 @@ class ProfilePostDetailScreen extends StatelessWidget {
                         post.originalImageUrl,
                         width: double.infinity,
                         fit: BoxFit.cover,
-                        errorBuilder:
-                            (context, error, stackTrace) {
+                        errorBuilder: (context, error, stackTrace) {
                           return const SizedBox.shrink();
                         },
+                      ),
+                    ),
+                  ],
+                  if (post.originalVideoUrl.trim().isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      height: 86,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: <Widget>[
+                          Icon(Icons.play_circle_outline_rounded),
+                          SizedBox(width: 8),
+                          Text('Video'),
+                        ],
                       ),
                     ),
                   ],
@@ -199,14 +216,6 @@ class ProfilePostDetailScreen extends StatelessWidget {
               const SizedBox(width: 6),
               Text('${post.commentCount}'),
             ],
-          ),
-          const SizedBox(height: 18),
-          Text(
-            'Reaktionen und Kommentare werden im nächsten Schritt '
-            'an das bestehende Feed-System angebunden.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
           ),
         ],
       ),

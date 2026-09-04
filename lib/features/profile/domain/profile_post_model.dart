@@ -102,14 +102,19 @@ class ProfilePostModel {
 
   static ProfilePostVisibility _readVisibility(dynamic value) {
     final cleaned = _readString(value).toLowerCase();
+
     switch (cleaned) {
-      case 'private':
-        return ProfilePostVisibility.private;
+      case 'public':
+        return ProfilePostVisibility.public;
       case 'friends':
         return ProfilePostVisibility.friends;
-      case 'public':
+      case 'private':
+        return ProfilePostVisibility.private;
       default:
-        return ProfilePostVisibility.public;
+        // Fail closed:
+        // Ein unbekannter oder fehlender Sichtbarkeitswert darf auf einem
+        // fremden Profil nicht versehentlich als öffentlich gelten.
+        return ProfilePostVisibility.private;
     }
   }
 

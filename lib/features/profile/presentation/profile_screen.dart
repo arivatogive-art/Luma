@@ -15,6 +15,7 @@ import '../domain/profile_friendship_model.dart';
 import '../domain/profile_model.dart';
 import '../domain/profile_photo_model.dart';
 import '../domain/profile_post_model.dart';
+import 'profile_create_post_screen.dart';
 import 'profile_edit_screen.dart';
 import 'profile_photos_screen.dart';
 import 'profile_post_detail_screen.dart';
@@ -144,6 +145,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
 
     await _loadProfileContent(profile);
+  }
+
+  Future<void> _openCreatePost() async {
+    final profile = _profileController.profile;
+
+    if (profile == null || !_profileController.isOwnProfile) {
+      return;
+    }
+
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => ProfileCreatePostScreen(
+          profile: profile,
+          controller: _postsController,
+        ),
+      ),
+    );
+
+    if (!mounted || changed != true) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Dein Beitrag ist online.'),
+        ),
+      );
   }
 
   Future<void> _openAllPhotos() async {
@@ -352,6 +380,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onEditProfile: () {
             _openEditProfile();
           },
+          onCreatePost: () {
+            _openCreatePost();
+          },
           onFriendshipAction: _showFriendshipInfo,
           onMessage: () {
             if (!_isOpeningChat) {
@@ -397,6 +428,7 @@ class _ProfileContent extends StatelessWidget {
     required this.postsController,
     required this.onRefresh,
     required this.onEditProfile,
+    required this.onCreatePost,
     required this.onFriendshipAction,
     required this.onMessage,
     required this.onOpenOptions,
@@ -415,6 +447,7 @@ class _ProfileContent extends StatelessWidget {
 
   final Future<void> Function() onRefresh;
   final VoidCallback onEditProfile;
+  final VoidCallback onCreatePost;
   final VoidCallback onFriendshipAction;
   final VoidCallback onMessage;
   final VoidCallback onOpenOptions;
@@ -453,6 +486,11 @@ class _ProfileContent extends StatelessWidget {
             ProfileAboutSection(
               profile: profile,
             ),
+            if (isOwnProfile)
+              _ProfileCreatePostEntry(
+                onTap: onCreatePost,
+                isCreating: postsController.isCreating,
+              ),
             ProfilePhotosSection(
               state: photosController.state,
               photos: photosController.photos,
@@ -468,6 +506,68 @@ class _ProfileContent extends StatelessWidget {
               onOpenPost: onOpenPost,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileCreatePostEntry extends StatelessWidget {
+  const _ProfileCreatePostEntry({
+    required this.onTap,
+    required this.isCreating,
+  });
+
+  final VoidCallback onTap;
+  final bool isCreating;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      child: Material(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          onTap: isCreating ? null : onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 15,
+            ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: theme.dividerColor.withValues(alpha: 0.55),
+              ),
+            ),
+            child: Row(
+              children: <Widget>[
+                Icon(
+                  Icons.edit_outlined,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Text(
+                    isCreating
+                        ? 'Beitrag wird veröffentlicht ...'
+                        : 'Was möchtest du teilen?',
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
