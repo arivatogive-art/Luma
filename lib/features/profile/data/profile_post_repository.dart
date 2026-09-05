@@ -66,6 +66,26 @@ class ProfilePostRepository {
     return List<ProfilePostModel>.unmodifiable(posts);
   }
 
+  Future<ProfilePostModel?> fetchPostById({
+    required String postId,
+  }) async {
+    final cleanedPostId = postId.trim();
+    if (cleanedPostId.isEmpty) return null;
+
+    final snapshot =
+        await _firestore.collection('feed_posts').doc(cleanedPostId).get();
+
+    if (!snapshot.exists) return null;
+
+    final data = snapshot.data();
+    if (data == null) return null;
+
+    return ProfilePostModel.fromFirestore(
+      id: snapshot.id,
+      data: data,
+    );
+  }
+
   String createPostId() {
     return 'post_${DateTime.now().microsecondsSinceEpoch}';
   }

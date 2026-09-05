@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../../messenger/presentation/messenger_screen.dart';
 import '../../notifications/application/notification_controller.dart';
+import '../../notifications/domain/notification_model.dart';
+import '../../notifications/presentation/notification_post_target_screen.dart';
 import '../../notifications/presentation/notifications_screen.dart';
 import '../../profile/presentation/profile_screen.dart';
 
@@ -22,6 +24,10 @@ class MainShellScreen extends StatefulWidget {
 class _MainShellScreenState extends State<MainShellScreen> {
   late int _currentIndex;
   late final LumaNotificationController _notificationController;
+  final GlobalKey<NavigatorState> _notificationsNavigatorKey =
+      GlobalKey<NavigatorState>();
+
+  bool _isNotificationTargetOpen = false;
 
   static const List<_ShellDestination> _destinations = <_ShellDestination>[
     _ShellDestination(
@@ -70,61 +76,25 @@ class _MainShellScreenState extends State<MainShellScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        centerTitle: false,
-        titleSpacing: 18,
-        title: Text(
-          'Luma',
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontSize: 24,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.4,
-            color: colorScheme.onSurface,
-          ),
-        ),
-        actions: <Widget>[
-          IconButton(
-            tooltip: 'Suchen',
-            onPressed: _openSearch,
-            icon: const Icon(
-              Icons.search_rounded,
-              size: 25,
-            ),
-          ),
-          const SizedBox(width: 2),
-          TextButton(
-            onPressed: _openMyLuma,
-            style: TextButton.styleFrom(
-              foregroundColor: colorScheme.onSurface,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 10,
-              ),
-            ),
-            child: Text(
-              'Mein Luma',
-              style: theme.textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: colorScheme.onSurface,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
+      appBar: _currentIndex == 1 && _isNotificationTargetOpen
+          ? null
+          : _buildAppBar(context),
       body: IndexedStack(
         index: _currentIndex,
         children: <Widget>[
           const MessengerScreen(),
-          NotificationsScreen(
-            controller: _notificationController,
+          Navigator(
+            key: _notificationsNavigatorKey,
+            onGenerateRoute: (settings) {
+              return MaterialPageRoute<void>(
+                settings: settings,
+                builder: (_) => NotificationsScreen(
+                  controller: _notificationController,
+                  onNotificationTap: _openNotificationTarget,
+                ),
+              );
+            },
           ),
           const ProfileScreen(),
         ],
@@ -156,6 +126,57 @@ class _MainShellScreenState extends State<MainShellScreen> {
           growable: false,
         ),
       ),
+    );
+  }
+
+  AppBar _buildAppBar(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return AppBar(
+      automaticallyImplyLeading: false,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      centerTitle: false,
+      titleSpacing: 18,
+      title: Text(
+        'Luma',
+        style: theme.textTheme.titleLarge?.copyWith(
+          fontSize: 24,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.4,
+          color: colorScheme.onSurface,
+        ),
+      ),
+      actions: <Widget>[
+        IconButton(
+          tooltip: 'Suchen',
+          onPressed: _openSearch,
+          icon: const Icon(
+            Icons.search_rounded,
+            size: 25,
+          ),
+        ),
+        const SizedBox(width: 2),
+        TextButton(
+          onPressed: _openMyLuma,
+          style: TextButton.styleFrom(
+            foregroundColor: colorScheme.onSurface,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 10,
+            ),
+          ),
+          child: Text(
+            'Mein Luma',
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: colorScheme.onSurface,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+      ],
     );
   }
 
@@ -226,6 +247,69 @@ class _MainShellScreenState extends State<MainShellScreen> {
     setState(() {
       _currentIndex = index;
     });
+  }
+
+  Future<void> _openNotificationTarget(
+    LumaNotificationModel notification,
+  ) async {
+    if (!_supportsPostTarget(notification.type)) {
+      return;
+    }
+
+    final navigator = _notificationsNavigatorKey.currentState;
+    if (navigator == null) return;
+
+    if (mounted) {
+      setState(() {
+        _isNotificationTargetOpen = true;
+      });
+    }
+
+    try {
+      await navigator.push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => NotificationPostTargetScreen(
+            notification: notification,
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isNotificationTargetOpen = false;
+        });
+      }
+    }
+  }
+
+  bool _supportsPostTarget(LumaNotificationType type) {
+    switch (type) {
+      case LumaNotificationType.postLike:
+      case LumaNotificationType.postComment:
+      case LumaNotificationType.commentReply:
+      case LumaNotificationType.commentLike:
+      case LumaNotificationType.postShare:
+        return true;
+      case LumaNotificationType.friendRequest:
+      case LumaNotificationType.friendRequestAccepted:
+      case LumaNotificationType.storyView:
+      case LumaNotificationType.storyReaction:
+      case LumaNotificationType.storyReply:
+      case LumaNotificationType.mention:
+      case LumaNotificationType.groupActivity:
+      case LumaNotificationType.pageActivity:
+      case LumaNotificationType.newFollower:
+      case LumaNotificationType.relationshipRequest:
+      case LumaNotificationType.relationshipAccepted:
+      case LumaNotificationType.relationshipRejected:
+      case LumaNotificationType.relationshipCancelled:
+      case LumaNotificationType.relationshipRemoved:
+      case LumaNotificationType.relationshipChanged:
+      case LumaNotificationType.securityAlert:
+      case LumaNotificationType.systemUpdate:
+      case LumaNotificationType.unknown:
+        return false;
+    }
   }
 
   void _openSearch() {

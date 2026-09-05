@@ -9,9 +9,12 @@ class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({
     super.key,
     required this.controller,
+    this.onNotificationTap,
   });
 
   final LumaNotificationController controller;
+  final Future<void> Function(LumaNotificationModel notification)?
+      onNotificationTap;
 
   @override
   Widget build(BuildContext context) {
@@ -75,6 +78,19 @@ class NotificationsScreen extends StatelessWidget {
     );
   }
 
+  Future<void> _handleNotificationTap(
+    LumaNotificationModel notification,
+  ) async {
+    if (notification.isUnread) {
+      await controller.markAsRead(notification.id);
+    }
+
+    final callback = onNotificationTap;
+    if (callback != null) {
+      await callback(notification);
+    }
+  }
+
   Widget _buildContent(BuildContext context) {
     switch (controller.state) {
       case LumaNotificationsLoadState.initial:
@@ -122,9 +138,7 @@ class NotificationsScreen extends StatelessWidget {
                 notification: notification,
                 isProcessing:
                     controller.isMarkingAsRead(notification.id),
-                onTap: notification.isUnread
-                    ? () => controller.markAsRead(notification.id)
-                    : null,
+                onTap: () => _handleNotificationTap(notification),
               );
             },
           ),
