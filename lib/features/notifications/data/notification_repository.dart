@@ -55,4 +55,89 @@ class LumaNotificationRepository {
       return List<LumaNotificationModel>.unmodifiable(notifications);
     });
   }
+
+  Future<void> markAsRead({
+    required String userId,
+    required String notificationId,
+  }) async {
+    final cleanedUserId = userId.trim();
+    final cleanedNotificationId = notificationId.trim();
+
+    if (cleanedUserId.isEmpty || cleanedNotificationId.isEmpty) {
+      throw ArgumentError('userId und notificationId dürfen nicht leer sein.');
+    }
+
+    final reference = _firestore
+        .collection('users')
+        .doc(cleanedUserId)
+        .collection('notifications')
+        .doc(cleanedNotificationId);
+
+    final snapshot = await reference.get();
+
+    if (!snapshot.exists) {
+      return;
+    }
+
+    final data = snapshot.data();
+    if (data == null) {
+      return;
+    }
+
+    if ((data['userId'] as String?)?.trim() != cleanedUserId) {
+      throw StateError('Die Benachrichtigung gehört nicht zum aktiven Nutzer.');
+    }
+
+    if (data['isRead'] == true) {
+      return;
+    }
+
+    await reference.update(<String, dynamic>{
+      'isRead': true,
+      'readAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> markAllAsRead({
+    required String userId,
+  }) async {
+    final cleanedUserId = userId.trim();
+
+    if (cleanedUserId.isEmpty) {
+      throw ArgumentError('userId darf nicht leer sein.');
+    }
+
+    final collection = _firestore
+        .collection('users')
+        .doc(cleanedUserId)
+        .collection('notifications');
+
+    final snapshot = await collection
+        .where('isRead', isEqualTo: false)
+        .limit(400)
+        .get();
+
+    if (snapshot.docs.isEmpty) {
+      return;
+    }
+
+    final batch = _firestore.batch();
+
+    for (final document in snapshot.docs) {
+      final data = document.data();
+
+      if ((data['userId'] as String?)?.trim() != cleanedUserId) {
+        continue;
+      }
+
+      batch.update(document.reference, <String, dynamic>{
+        'isRead': true,
+        'readAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
+
+    await batch.commit();
+  }
 }

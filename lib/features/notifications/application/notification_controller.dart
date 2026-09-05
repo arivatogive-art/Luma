@@ -35,11 +35,15 @@ class LumaNotificationController extends ChangeNotifier {
       _notificationsSubscription;
 
   String? _activeUserId;
+  String? _markingNotificationId;
+  bool _isMarkingAllAsRead = false;
   bool _disposed = false;
 
   LumaNotificationsLoadState get state => _state;
   List<LumaNotificationModel> get notifications => _notifications;
   String? get errorMessage => _errorMessage;
+  String? get markingNotificationId => _markingNotificationId;
+  bool get isMarkingAllAsRead => _isMarkingAllAsRead;
 
   int get unreadCount {
     var count = 0;
@@ -47,6 +51,10 @@ class LumaNotificationController extends ChangeNotifier {
       if (notification.isUnread) count++;
     }
     return count;
+  }
+
+  bool isMarkingAsRead(String notificationId) {
+    return _markingNotificationId == notificationId.trim();
   }
 
   Future<void> initialize() async {
@@ -66,16 +74,98 @@ class LumaNotificationController extends ChangeNotifier {
 
   Future<void> reload() async {
     if (_disposed) return;
-    await _handleAuthUser(_firebaseAuth.currentUser);
+    await _handleAuthUser(
+      _firebaseAuth.currentUser,
+      force: true,
+    );
   }
 
-  Future<void> _handleAuthUser(User? user) async {
+  Future<void> markAsRead(String notificationId) async {
+    if (_disposed) return;
+
+    final cleanedNotificationId = notificationId.trim();
+    final userId = _activeUserId?.trim() ?? '';
+
+    if (cleanedNotificationId.isEmpty || userId.isEmpty) {
+      return;
+    }
+
+    LumaNotificationModel? notification;
+    for (final current in _notifications) {
+      if (current.id == cleanedNotificationId) {
+        notification = current;
+        break;
+      }
+    }
+
+    if (notification == null || notification.isRead) {
+      return;
+    }
+
+    if (_markingNotificationId != null || _isMarkingAllAsRead) {
+      return;
+    }
+
+    _markingNotificationId = cleanedNotificationId;
+    _errorMessage = null;
+    _notifySafely();
+
+    try {
+      await _repository.markAsRead(
+        userId: userId,
+        notificationId: cleanedNotificationId,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Luma mark notification as read failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+
+      _errorMessage = 'Die Benachrichtigung konnte nicht aktualisiert werden.';
+    } finally {
+      _markingNotificationId = null;
+      _notifySafely();
+    }
+  }
+
+  Future<void> markAllAsRead() async {
+    if (_disposed || unreadCount == 0 || _isMarkingAllAsRead) {
+      return;
+    }
+
+    final userId = _activeUserId?.trim() ?? '';
+    if (userId.isEmpty) {
+      return;
+    }
+
+    _isMarkingAllAsRead = true;
+    _errorMessage = null;
+    _notifySafely();
+
+    try {
+      await _repository.markAllAsRead(userId: userId);
+    } catch (error, stackTrace) {
+      debugPrint('Luma mark all notifications as read failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+
+      _errorMessage =
+          'Die Benachrichtigungen konnten nicht aktualisiert werden.';
+    } finally {
+      _isMarkingAllAsRead = false;
+      _notifySafely();
+    }
+  }
+
+  Future<void> _handleAuthUser(
+    User? user, {
+    bool force = false,
+  }) async {
     if (_disposed) return;
 
     final userId = user?.uid.trim() ?? '';
 
     if (userId.isEmpty) {
       _activeUserId = null;
+      _markingNotificationId = null;
+      _isMarkingAllAsRead = false;
       await _notificationsSubscription?.cancel();
       _notificationsSubscription = null;
       _notifications = const <LumaNotificationModel>[];
@@ -84,7 +174,8 @@ class LumaNotificationController extends ChangeNotifier {
       return;
     }
 
-    if (_activeUserId == userId &&
+    if (!force &&
+        _activeUserId == userId &&
         _notificationsSubscription != null &&
         _state != LumaNotificationsLoadState.error) {
       return;
@@ -133,6 +224,11 @@ class LumaNotificationController extends ChangeNotifier {
   void _setState(LumaNotificationsLoadState nextState) {
     if (_disposed) return;
     _state = nextState;
+    notifyListeners();
+  }
+
+  void _notifySafely() {
+    if (_disposed) return;
     notifyListeners();
   }
 
