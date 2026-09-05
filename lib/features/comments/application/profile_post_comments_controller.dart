@@ -23,11 +23,15 @@ class ProfilePostCommentsController extends ChangeNotifier {
   List<ProfilePostCommentModel> _comments =
       const <ProfilePostCommentModel>[];
   String? _errorMessage;
+  bool _isSending = false;
+  String? _sendErrorMessage;
   bool _disposed = false;
 
   ProfilePostCommentsLoadState get state => _state;
   List<ProfilePostCommentModel> get comments => _comments;
   String? get errorMessage => _errorMessage;
+  bool get isSending => _isSending;
+  String? get sendErrorMessage => _sendErrorMessage;
 
   bool get isLoading =>
       _state == ProfilePostCommentsLoadState.initial ||
@@ -96,10 +100,99 @@ class ProfilePostCommentsController extends ChangeNotifier {
     return load(postId: postId);
   }
 
+  Future<bool> createComment({
+    required String postId,
+    required String authorId,
+    required String authorName,
+    required String authorAvatarUrl,
+    required String text,
+  }) async {
+    if (_isSending) return false;
+
+    final cleanedText = text.trim();
+
+    if (cleanedText.isEmpty) {
+      _sendErrorMessage = 'Schreibe zuerst einen Kommentar.';
+      _notify();
+      return false;
+    }
+
+    if (cleanedText.length > 500) {
+      _sendErrorMessage = 'Ein Kommentar darf höchstens 500 Zeichen haben.';
+      _notify();
+      return false;
+    }
+
+    _isSending = true;
+    _sendErrorMessage = null;
+    _notify();
+
+    try {
+      await _repository.createComment(
+        postId: postId,
+        authorId: authorId,
+        authorName: authorName,
+        authorAvatarUrl: authorAvatarUrl,
+        text: cleanedText,
+      );
+
+      await _reloadAfterCreate(postId: postId);
+      return true;
+    } catch (error, stackTrace) {
+      debugPrint(
+        'ProfilePostCommentsController: Kommentar konnte nicht gesendet werden.',
+      );
+      debugPrint('$error');
+      debugPrintStack(stackTrace: stackTrace);
+
+      _sendErrorMessage = 'Kommentar konnte nicht gesendet werden.';
+      return false;
+    } finally {
+      _isSending = false;
+      _notify();
+    }
+  }
+
+  Future<void> _reloadAfterCreate({
+    required String postId,
+  }) async {
+    try {
+      _comments = await _repository.fetchComments(
+        postId: postId,
+        limit: 100,
+      );
+      _errorMessage = null;
+      _state = ProfilePostCommentsLoadState.loaded;
+    } catch (error, stackTrace) {
+      debugPrint(
+        'ProfilePostCommentsController: Kommentar wurde gespeichert, '
+        'aber die Liste konnte nicht neu geladen werden.',
+      );
+      debugPrint('$error');
+      debugPrintStack(stackTrace: stackTrace);
+
+      _errorMessage = 'Kommentare konnten nicht neu geladen werden.';
+      _state = ProfilePostCommentsLoadState.error;
+    }
+
+    _notify();
+  }
+
+  void clearSendError() {
+    if (_sendErrorMessage == null) return;
+    _sendErrorMessage = null;
+    _notify();
+  }
+
   void _setState(ProfilePostCommentsLoadState nextState) {
     if (_disposed) return;
 
     _state = nextState;
+    notifyListeners();
+  }
+
+  void _notify() {
+    if (_disposed) return;
     notifyListeners();
   }
 

@@ -1,5 +1,6 @@
 // Pfad: lib/features/profile/presentation/profile_post_detail_screen.dart
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../comments/application/profile_post_comments_controller.dart';
@@ -306,6 +307,8 @@ class ProfilePostDetailScreen extends StatelessWidget {
           const SizedBox(height: 18),
           _ProfilePostCommentsSection(
             postId: post.id,
+            authorName: displayName,
+            authorAvatarUrl: avatarUrl,
           ),
         ],
       ),
@@ -350,9 +353,13 @@ class ProfilePostDetailScreen extends StatelessWidget {
 class _ProfilePostCommentsSection extends StatefulWidget {
   const _ProfilePostCommentsSection({
     required this.postId,
+    required this.authorName,
+    required this.authorAvatarUrl,
   });
 
   final String postId;
+  final String authorName;
+  final String authorAvatarUrl;
 
   @override
   State<_ProfilePostCommentsSection> createState() =>
@@ -362,12 +369,17 @@ class _ProfilePostCommentsSection extends StatefulWidget {
 class _ProfilePostCommentsSectionState
     extends State<_ProfilePostCommentsSection> {
   late final ProfilePostCommentsController _controller;
+  late final TextEditingController _commentTextController;
+  late final FocusNode _commentFocusNode;
 
   @override
   void initState() {
     super.initState();
 
     _controller = ProfilePostCommentsController();
+    _commentTextController = TextEditingController();
+    _commentFocusNode = FocusNode();
+
     _controller.addListener(_handleControllerChanged);
     _controller.load(postId: widget.postId);
   }
@@ -385,6 +397,8 @@ class _ProfilePostCommentsSectionState
   void dispose() {
     _controller.removeListener(_handleControllerChanged);
     _controller.dispose();
+    _commentTextController.dispose();
+    _commentFocusNode.dispose();
     super.dispose();
   }
 
@@ -407,9 +421,143 @@ class _ProfilePostCommentsSectionState
           ),
         ),
         const SizedBox(height: 12),
+        _buildComposer(context),
+        const SizedBox(height: 16),
         _buildContent(context),
       ],
     );
+  }
+
+  Widget _buildComposer(BuildContext context) {
+    final theme = Theme.of(context);
+    final user = FirebaseAuth.instance.currentUser;
+    final canSend = user != null && !_controller.isSending;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: <Widget>[
+            Expanded(
+              child: TextField(
+                controller: _commentTextController,
+                focusNode: _commentFocusNode,
+                enabled: !_controller.isSending,
+                minLines: 1,
+                maxLines: 5,
+                maxLength: 500,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  hintText: 'Kommentar schreiben …',
+                  counterText: '',
+                  filled: true,
+                  fillColor: theme.colorScheme.surfaceContainerLow,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 11,
+                  ),
+                ),
+                onChanged: (_) {
+                  if (_controller.sendErrorMessage != null) {
+                    _controller.clearSendError();
+                  } else {
+                    setState(() {});
+                  }
+                },
+                onSubmitted: (_) {
+                  if (canSend) {
+                    _sendComment();
+                  }
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton.filled(
+              tooltip: 'Kommentar senden',
+              onPressed: canSend &&
+                      _commentTextController.text.trim().isNotEmpty
+                  ? _sendComment
+                  : null,
+              icon: _controller.isSending
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Icon(Icons.send_rounded),
+            ),
+          ],
+        ),
+        if (_controller.sendErrorMessage != null) ...<Widget>[
+          const SizedBox(height: 6),
+          Text(
+            _controller.sendErrorMessage!,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.error,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _sendComment() async {
+    if (_controller.isSending) return;
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Du musst angemeldet sein, um zu kommentieren.'),
+        ),
+      );
+      return;
+    }
+
+    final text = _commentTextController.text.trim();
+    if (text.isEmpty) return;
+
+    final fallbackName = user.displayName?.trim() ?? '';
+    final authorName = widget.authorName.trim().isNotEmpty
+        ? widget.authorName.trim()
+        : fallbackName;
+
+    if (authorName.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Dein Anzeigename konnte nicht geladen werden.'),
+        ),
+      );
+      return;
+    }
+
+    final profileAvatar = widget.authorAvatarUrl.trim();
+    final authAvatar = user.photoURL?.trim() ?? '';
+    final authorAvatarUrl =
+        profileAvatar.isNotEmpty ? profileAvatar : authAvatar;
+
+    final sent = await _controller.createComment(
+      postId: widget.postId,
+      authorId: user.uid,
+      authorName: authorName,
+      authorAvatarUrl: authorAvatarUrl,
+      text: text,
+    );
+
+    if (!mounted || !sent) return;
+
+    _commentTextController.clear();
+    _commentFocusNode.unfocus();
+    setState(() {});
   }
 
   Widget _buildContent(BuildContext context) {
