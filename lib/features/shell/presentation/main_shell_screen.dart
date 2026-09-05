@@ -8,6 +8,7 @@ import '../../notifications/domain/notification_model.dart';
 import '../../notifications/presentation/notification_post_target_screen.dart';
 import '../../notifications/presentation/notifications_screen.dart';
 import '../../profile/presentation/profile_screen.dart';
+import '../../search/presentation/search_screen.dart';
 
 class MainShellScreen extends StatefulWidget {
   const MainShellScreen({
@@ -331,14 +332,12 @@ class _MainShellScreenState extends State<MainShellScreen> {
     }
   }
 
-  void _openSearch() {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(
-          content: Text('Die Suche wird als eigener Bereich angebunden.'),
-        ),
-      );
+  Future<void> _openSearch() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const SearchScreen(),
+      ),
+    );
   }
 
   void _openMyLuma() {
