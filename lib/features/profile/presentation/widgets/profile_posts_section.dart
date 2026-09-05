@@ -183,11 +183,44 @@ class _ProfilePostCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 2),
-                        Text(
-                          _dateLabel(post.createdAt),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Flexible(
+                              child: Text(
+                                _dateLabel(post.createdAt),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '·',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Icon(
+                              _visibilityIcon(post.visibility),
+                              size: 14,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                _visibilityLabel(post.visibility),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -320,6 +353,28 @@ class _ProfilePostCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  static IconData _visibilityIcon(ProfilePostVisibility visibility) {
+    switch (visibility) {
+      case ProfilePostVisibility.public:
+        return Icons.public_rounded;
+      case ProfilePostVisibility.friends:
+        return Icons.people_outline_rounded;
+      case ProfilePostVisibility.private:
+        return Icons.lock_outline_rounded;
+    }
+  }
+
+  static String _visibilityLabel(ProfilePostVisibility visibility) {
+    switch (visibility) {
+      case ProfilePostVisibility.public:
+        return 'Öffentlich';
+      case ProfilePostVisibility.friends:
+        return 'Freunde';
+      case ProfilePostVisibility.private:
+        return 'Nur ich';
+    }
   }
 
   static String _dateLabel(DateTime value) {
