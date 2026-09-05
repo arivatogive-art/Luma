@@ -14,7 +14,9 @@ class ProfilePostsSection extends StatelessWidget {
     required this.posts,
     required this.isOwnProfile,
     required this.onOpenPost,
+    required this.onEditPost,
     required this.onDeletePost,
+    this.editingPostId,
     this.deletingPostId,
     this.errorMessage,
   });
@@ -24,7 +26,9 @@ class ProfilePostsSection extends StatelessWidget {
   final List<ProfilePostModel> posts;
   final bool isOwnProfile;
   final ValueChanged<ProfilePostModel> onOpenPost;
+  final Future<void> Function(ProfilePostModel post) onEditPost;
   final Future<void> Function(ProfilePostModel post) onDeletePost;
+  final String? editingPostId;
   final String? deletingPostId;
   final String? errorMessage;
 
@@ -87,8 +91,10 @@ class ProfilePostsSection extends StatelessWidget {
                     profile: profile,
                     post: post,
                     isOwnProfile: isOwnProfile,
+                    isEditing: editingPostId == post.id,
                     isDeleting: deletingPostId == post.id,
                     onTap: () => onOpenPost(post),
+                    onEdit: () => onEditPost(post),
                     onDelete: () => onDeletePost(post),
                   ),
                 ),
@@ -104,16 +110,20 @@ class _ProfilePostCard extends StatelessWidget {
     required this.profile,
     required this.post,
     required this.isOwnProfile,
+    required this.isEditing,
     required this.isDeleting,
     required this.onTap,
+    required this.onEdit,
     required this.onDelete,
   });
 
   final ProfileModel profile;
   final ProfilePostModel post;
   final bool isOwnProfile;
+  final bool isEditing;
   final bool isDeleting;
   final VoidCallback onTap;
+  final Future<void> Function() onEdit;
   final Future<void> Function() onDelete;
 
   @override
@@ -183,7 +193,7 @@ class _ProfilePostCard extends StatelessWidget {
                     ),
                   ),
                   if (isOwnProfile)
-                    isDeleting
+                    (isEditing || isDeleting)
                         ? const SizedBox(
                             width: 40,
                             height: 40,
@@ -201,11 +211,23 @@ class _ProfilePostCard extends StatelessWidget {
                             tooltip: 'Beitragsoptionen',
                             icon: const Icon(Icons.more_horiz_rounded),
                             onSelected: (value) {
-                              if (value == 'delete') {
+                              if (value == 'edit') {
+                                onEdit();
+                              } else if (value == 'delete') {
                                 onDelete();
                               }
                             },
                             itemBuilder: (context) => const <PopupMenuEntry<String>>[
+                              PopupMenuItem<String>(
+                                value: 'edit',
+                                child: Row(
+                                  children: <Widget>[
+                                    Icon(Icons.edit_outlined),
+                                    SizedBox(width: 10),
+                                    Text('Beitrag bearbeiten'),
+                                  ],
+                                ),
+                              ),
                               PopupMenuItem<String>(
                                 value: 'delete',
                                 child: Row(

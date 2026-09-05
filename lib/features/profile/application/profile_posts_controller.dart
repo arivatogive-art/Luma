@@ -32,6 +32,8 @@ class ProfilePostsController extends ChangeNotifier {
   bool _isCreating = false;
   bool _isDeleting = false;
   String? _deletingPostId;
+  bool _isEditing = false;
+  String? _editingPostId;
 
   ProfilePostsLoadState get state => _state;
   List<ProfilePostModel> get posts => _posts;
@@ -39,6 +41,8 @@ class ProfilePostsController extends ChangeNotifier {
   bool get isCreating => _isCreating;
   bool get isDeleting => _isDeleting;
   String? get deletingPostId => _deletingPostId;
+  bool get isEditing => _isEditing;
+  String? get editingPostId => _editingPostId;
 
   bool get isLoading =>
       _state == ProfilePostsLoadState.initial ||
@@ -180,6 +184,54 @@ class ProfilePostsController extends ChangeNotifier {
     }
   }
 
+  Future<bool> updatePost({
+    required String currentUserId,
+    required ProfilePostModel post,
+    required String text,
+    required ProfilePostVisibility visibility,
+  }) async {
+    if (_isEditing || _isDeleting) return false;
+
+    final cleanedCurrentUserId = currentUserId.trim();
+    final cleanedPostId = post.id.trim();
+
+    if (cleanedCurrentUserId.isEmpty || cleanedPostId.isEmpty) {
+      _errorMessage = 'Der Beitrag konnte nicht eindeutig zugeordnet werden.';
+      _notify();
+      return false;
+    }
+
+    _isEditing = true;
+    _editingPostId = cleanedPostId;
+    _errorMessage = null;
+    _notify();
+
+    try {
+      final updatedPost = await _repository.updatePost(
+        postId: cleanedPostId,
+        currentUserId: cleanedCurrentUserId,
+        text: text,
+        visibility: visibility,
+      );
+
+      _replacePost(updatedPost);
+      return true;
+    } catch (error, stackTrace) {
+      debugPrint(
+        'ProfilePostsController: Beitrag konnte nicht bearbeitet werden.',
+      );
+      debugPrint('$error');
+      debugPrintStack(stackTrace: stackTrace);
+
+      _errorMessage = _messageForEditError(error);
+      return false;
+    } finally {
+      _isEditing = false;
+      _editingPostId = null;
+      _notify();
+    }
+  }
+
   Future<bool> deletePost({
     required String currentUserId,
     required ProfilePostModel post,
@@ -256,6 +308,16 @@ class ProfilePostsController extends ChangeNotifier {
     _state = ProfilePostsLoadState.loaded;
   }
 
+  void _replacePost(ProfilePostModel updatedPost) {
+    _posts = List<ProfilePostModel>.unmodifiable(
+      _posts.map(
+        (post) => post.id == updatedPost.id ? updatedPost : post,
+      ),
+    );
+    _state = ProfilePostsLoadState.loaded;
+    _notify();
+  }
+
   void _removePost(String postId) {
     _posts = List<ProfilePostModel>.unmodifiable(
       _posts.where((post) => post.id != postId),
@@ -299,6 +361,37 @@ class ProfilePostsController extends ChangeNotifier {
     }
 
     return 'Dein Beitrag konnte gerade nicht veröffentlicht werden.';
+  }
+
+  String _messageForEditError(Object error) {
+    final value = error.toString();
+
+    if (value.contains('profile-post-edit-not-owner')) {
+      return 'Du kannst nur deine eigenen Beiträge bearbeiten.';
+    }
+
+    if (value.contains('profile-post-edit-repost-unsupported')) {
+      return 'Geteilte Beiträge können hier noch nicht bearbeitet werden.';
+    }
+
+    if (value.contains('profile-post-text-too-long')) {
+      return 'Dein Beitrag darf maximal 420 Zeichen enthalten.';
+    }
+
+    if (value.contains('profile-post-empty-content')) {
+      return 'Ein Beitrag ohne Text oder Medien kann nicht gespeichert werden.';
+    }
+
+    if (value.contains('profile-post-not-found')) {
+      return 'Dieser Beitrag ist nicht mehr verfügbar.';
+    }
+
+    if (value.contains('profile-post-missing-user-id') ||
+        value.contains('profile-post-missing-post-id')) {
+      return 'Der Beitrag konnte nicht eindeutig zugeordnet werden.';
+    }
+
+    return 'Der Beitrag konnte gerade nicht gespeichert werden.';
   }
 
   String _messageForDeleteError(Object error) {

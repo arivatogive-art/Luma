@@ -17,6 +17,7 @@ import '../domain/profile_photo_model.dart';
 import '../domain/profile_post_model.dart';
 import 'profile_create_post_screen.dart';
 import 'profile_edit_screen.dart';
+import 'profile_edit_post_screen.dart';
 import 'profile_photos_screen.dart';
 import 'profile_post_detail_screen.dart';
 import 'widgets/profile_about_section.dart';
@@ -221,10 +222,61 @@ class _ProfileScreenState extends State<ProfileScreen> {
           profile: profile,
           post: post,
           isOwnProfile: _profileController.isOwnProfile,
+          onEditPost: _editPost,
           onDeletePost: _deletePost,
         ),
       ),
     );
+  }
+
+  Future<bool> _editPost(ProfilePostModel post) async {
+    if (!_profileController.isOwnProfile ||
+        _postsController.isEditing ||
+        _postsController.isDeleting) {
+      return false;
+    }
+
+    if (post.isRepost) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Geteilte Beiträge können hier noch nicht bearbeitet werden.',
+            ),
+          ),
+        );
+      return false;
+    }
+
+    final currentUserId = _profileController.currentUserId.trim();
+    if (currentUserId.isEmpty) {
+      return false;
+    }
+
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => ProfileEditPostScreen(
+          currentUserId: currentUserId,
+          post: post,
+          controller: _postsController,
+        ),
+      ),
+    );
+
+    if (!mounted || changed != true) {
+      return false;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Beitrag wurde aktualisiert.'),
+        ),
+      );
+
+    return true;
   }
 
   Future<bool> _deletePost(ProfilePostModel post) async {
@@ -466,6 +518,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onOpenPost: (post) {
             _openPost(post);
           },
+          onEditPost: _editPost,
           onDeletePost: _deletePost,
         );
 
@@ -505,6 +558,7 @@ class _ProfileContent extends StatelessWidget {
     required this.onOpenAllPhotos,
     required this.onOpenPhoto,
     required this.onOpenPost,
+    required this.onEditPost,
     required this.onDeletePost,
   });
 
@@ -525,6 +579,7 @@ class _ProfileContent extends StatelessWidget {
   final VoidCallback onOpenAllPhotos;
   final ValueChanged<ProfilePhotoModel> onOpenPhoto;
   final ValueChanged<ProfilePostModel> onOpenPost;
+  final Future<bool> Function(ProfilePostModel post) onEditPost;
   final Future<bool> Function(ProfilePostModel post) onDeletePost;
 
   @override
@@ -575,9 +630,13 @@ class _ProfileContent extends StatelessWidget {
               state: postsController.state,
               posts: postsController.posts,
               isOwnProfile: isOwnProfile,
+              editingPostId: postsController.editingPostId,
               deletingPostId: postsController.deletingPostId,
               errorMessage: postsController.errorMessage,
               onOpenPost: onOpenPost,
+              onEditPost: (post) async {
+                await onEditPost(post);
+              },
               onDeletePost: (post) async {
                 await onDeletePost(post);
               },

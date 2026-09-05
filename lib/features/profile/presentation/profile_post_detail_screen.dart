@@ -11,12 +11,14 @@ class ProfilePostDetailScreen extends StatelessWidget {
     required this.profile,
     required this.post,
     required this.isOwnProfile,
+    required this.onEditPost,
     required this.onDeletePost,
   });
 
   final ProfileModel profile;
   final ProfilePostModel post;
   final bool isOwnProfile;
+  final Future<bool> Function(ProfilePostModel post) onEditPost;
   final Future<bool> Function(ProfilePostModel post) onDeletePost;
 
   @override
@@ -40,14 +42,32 @@ class ProfilePostDetailScreen extends StatelessWidget {
               tooltip: 'Beitragsoptionen',
               icon: const Icon(Icons.more_horiz_rounded),
               onSelected: (value) async {
-                if (value != 'delete') return;
+                if (value == 'edit') {
+                  final edited = await onEditPost(post);
+                  if (!context.mounted || !edited) return;
 
-                final deleted = await onDeletePost(post);
-                if (!context.mounted || !deleted) return;
+                  Navigator.of(context).pop(true);
+                  return;
+                }
 
-                Navigator.of(context).pop(true);
+                if (value == 'delete') {
+                  final deleted = await onDeletePost(post);
+                  if (!context.mounted || !deleted) return;
+
+                  Navigator.of(context).pop(true);
+                }
               },
               itemBuilder: (context) => const <PopupMenuEntry<String>>[
+                PopupMenuItem<String>(
+                  value: 'edit',
+                  child: Row(
+                    children: <Widget>[
+                      Icon(Icons.edit_outlined),
+                      SizedBox(width: 10),
+                      Text('Beitrag bearbeiten'),
+                    ],
+                  ),
+                ),
                 PopupMenuItem<String>(
                   value: 'delete',
                   child: Row(

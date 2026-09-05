@@ -223,6 +223,76 @@ class ProfilePostRepository {
     );
   }
 
+  Future<ProfilePostModel> updatePost({
+    required String postId,
+    required String currentUserId,
+    required String text,
+    required ProfilePostVisibility visibility,
+  }) async {
+    final cleanedPostId = postId.trim();
+    final cleanedCurrentUserId = currentUserId.trim();
+    final cleanedText = text.trim();
+
+    if (cleanedPostId.isEmpty) {
+      throw StateError('profile-post-missing-post-id');
+    }
+
+    if (cleanedCurrentUserId.isEmpty) {
+      throw StateError('profile-post-missing-user-id');
+    }
+
+    if (cleanedText.length > 420) {
+      throw StateError('profile-post-text-too-long');
+    }
+
+    final postRef = _firestore.collection('feed_posts').doc(cleanedPostId);
+    final snapshot = await postRef.get();
+
+    if (!snapshot.exists) {
+      throw StateError('profile-post-not-found');
+    }
+
+    final data = snapshot.data() ?? <String, dynamic>{};
+    final authorId = _readString(data['authorId']);
+    final userId = _readString(data['userId']);
+    final ownerId = authorId.isNotEmpty ? authorId : userId;
+
+    if (ownerId != cleanedCurrentUserId) {
+      throw StateError('profile-post-edit-not-owner');
+    }
+
+    final postType = _readString(data['postType']);
+    if (postType == 'repost') {
+      throw StateError('profile-post-edit-repost-unsupported');
+    }
+
+    final hasImage = _readString(data['imageUrl']).isNotEmpty ||
+        _readString(data['feedImageUrl']).isNotEmpty;
+    final hasVideo = _readString(data['videoUrl']).isNotEmpty;
+
+    if (cleanedText.isEmpty && !hasImage && !hasVideo) {
+      throw StateError('profile-post-empty-content');
+    }
+
+    await postRef.update(<String, dynamic>{
+      'contentText': cleanedText,
+      'visibility': visibility.name,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    final updatedSnapshot = await postRef.get();
+    final updatedData = updatedSnapshot.data();
+
+    if (updatedData == null) {
+      throw StateError('profile-post-not-found');
+    }
+
+    return ProfilePostModel.fromFirestore(
+      id: updatedSnapshot.id,
+      data: updatedData,
+    );
+  }
+
   Future<ProfilePostDeleteResult> deletePost({
     required String postId,
     required String currentUserId,
