@@ -371,6 +371,8 @@ class _ProfilePostCommentsSectionState
   late final ProfilePostCommentsController _controller;
   late final TextEditingController _commentTextController;
   late final FocusNode _commentFocusNode;
+  String? _replyTargetCommentId;
+  String? _replyTargetAuthorName;
 
   @override
   void initState() {
@@ -436,6 +438,47 @@ class _ProfilePostCommentsSectionState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
+        if (_replyTargetCommentId != null) ...<Widget>[
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: <Widget>[
+                const Icon(
+                  Icons.reply_rounded,
+                  size: 17,
+                ),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    'Antwort an ${_replyTargetAuthorName ?? 'Kommentar'}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Antwort abbrechen',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _controller.isSending
+                      ? null
+                      : _cancelReply,
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    size: 18,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: <Widget>[
@@ -449,7 +492,9 @@ class _ProfilePostCommentsSectionState
                 maxLength: 500,
                 textCapitalization: TextCapitalization.sentences,
                 decoration: InputDecoration(
-                  hintText: 'Kommentar schreiben …',
+                  hintText: _replyTargetCommentId == null
+                      ? 'Kommentar schreiben …'
+                      : 'Antwort schreiben …',
                   counterText: '',
                   filled: true,
                   fillColor: theme.colorScheme.surfaceContainerLow,
@@ -478,7 +523,9 @@ class _ProfilePostCommentsSectionState
             ),
             const SizedBox(width: 8),
             IconButton.filled(
-              tooltip: 'Kommentar senden',
+              tooltip: _replyTargetCommentId == null
+                  ? 'Kommentar senden'
+                  : 'Antwort senden',
               onPressed: canSend &&
                       _commentTextController.text.trim().isNotEmpty
                   ? _sendComment
@@ -545,19 +592,63 @@ class _ProfilePostCommentsSectionState
     final authorAvatarUrl =
         profileAvatar.isNotEmpty ? profileAvatar : authAvatar;
 
-    final sent = await _controller.createComment(
-      postId: widget.postId,
-      authorId: user.uid,
-      authorName: authorName,
-      authorAvatarUrl: authorAvatarUrl,
-      text: text,
-    );
+    final replyTargetCommentId = _replyTargetCommentId;
+
+    final sent = replyTargetCommentId == null
+        ? await _controller.createComment(
+            postId: widget.postId,
+            authorId: user.uid,
+            authorName: authorName,
+            authorAvatarUrl: authorAvatarUrl,
+            text: text,
+          )
+        : await _controller.createReply(
+            postId: widget.postId,
+            parentCommentId: replyTargetCommentId,
+            authorId: user.uid,
+            authorName: authorName,
+            authorAvatarUrl: authorAvatarUrl,
+            text: text,
+          );
 
     if (!mounted || !sent) return;
 
     _commentTextController.clear();
     _commentFocusNode.unfocus();
-    setState(() {});
+    setState(() {
+      _replyTargetCommentId = null;
+      _replyTargetAuthorName = null;
+    });
+  }
+
+  void _startReply(ProfilePostCommentModel comment) {
+    if (_controller.isSending) return;
+
+    final rootCommentId = comment.isReply
+        ? (comment.parentCommentId?.trim() ?? '')
+        : comment.id.trim();
+
+    if (rootCommentId.isEmpty) return;
+
+    setState(() {
+      _replyTargetCommentId = rootCommentId;
+      _replyTargetAuthorName = comment.authorName.trim();
+    });
+
+    _controller.clearSendError();
+    _commentFocusNode.requestFocus();
+  }
+
+  void _cancelReply() {
+    if (_controller.isSending) return;
+
+    setState(() {
+      _replyTargetCommentId = null;
+      _replyTargetAuthorName = null;
+    });
+
+    _controller.clearSendError();
+    _commentFocusNode.unfocus();
   }
 
   Widget _buildContent(BuildContext context) {
@@ -598,6 +689,7 @@ class _ProfilePostCommentsSectionState
                   child: _CommentThread(
                     comment: comment,
                     replies: _controller.repliesFor(comment.id),
+                    onReply: _startReply,
                   ),
                 ),
               )
@@ -611,16 +703,21 @@ class _CommentThread extends StatelessWidget {
   const _CommentThread({
     required this.comment,
     required this.replies,
+    required this.onReply,
   });
 
   final ProfilePostCommentModel comment;
   final List<ProfilePostCommentModel> replies;
+  final ValueChanged<ProfilePostCommentModel> onReply;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: <Widget>[
-        _CommentTile(comment: comment),
+        _CommentTile(
+          comment: comment,
+          onReply: () => onReply(comment),
+        ),
         if (replies.isNotEmpty) ...<Widget>[
           const SizedBox(height: 8),
           Padding(
@@ -633,6 +730,7 @@ class _CommentThread extends StatelessWidget {
                       child: _CommentTile(
                         comment: reply,
                         isReply: true,
+                        onReply: () => onReply(reply),
                       ),
                     ),
                   )
@@ -648,10 +746,12 @@ class _CommentThread extends StatelessWidget {
 class _CommentTile extends StatelessWidget {
   const _CommentTile({
     required this.comment,
+    required this.onReply,
     this.isReply = false,
   });
 
   final ProfilePostCommentModel comment;
+  final VoidCallback onReply;
   final bool isReply;
 
   @override
@@ -712,6 +812,24 @@ class _CommentTile extends StatelessWidget {
                   comment.text,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: onReply,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 2,
+                      vertical: 2,
+                    ),
+                    child: Text(
+                      'Antworten',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
                 if (comment.reactionCount > 0 ||

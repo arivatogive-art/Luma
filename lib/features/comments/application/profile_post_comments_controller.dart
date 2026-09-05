@@ -25,6 +25,7 @@ class ProfilePostCommentsController extends ChangeNotifier {
   String? _errorMessage;
   bool _isSending = false;
   String? _sendErrorMessage;
+  String? _replyingToCommentId;
   bool _disposed = false;
 
   ProfilePostCommentsLoadState get state => _state;
@@ -32,6 +33,7 @@ class ProfilePostCommentsController extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get isSending => _isSending;
   String? get sendErrorMessage => _sendErrorMessage;
+  String? get replyingToCommentId => _replyingToCommentId;
 
   bool get isLoading =>
       _state == ProfilePostCommentsLoadState.initial ||
@@ -106,49 +108,106 @@ class ProfilePostCommentsController extends ChangeNotifier {
     required String authorName,
     required String authorAvatarUrl,
     required String text,
+  }) {
+    return _send(
+      postId: postId,
+      authorId: authorId,
+      authorName: authorName,
+      authorAvatarUrl: authorAvatarUrl,
+      text: text,
+      parentCommentId: null,
+    );
+  }
+
+  Future<bool> createReply({
+    required String postId,
+    required String parentCommentId,
+    required String authorId,
+    required String authorName,
+    required String authorAvatarUrl,
+    required String text,
+  }) {
+    return _send(
+      postId: postId,
+      authorId: authorId,
+      authorName: authorName,
+      authorAvatarUrl: authorAvatarUrl,
+      text: text,
+      parentCommentId: parentCommentId,
+    );
+  }
+
+  Future<bool> _send({
+    required String postId,
+    required String authorId,
+    required String authorName,
+    required String authorAvatarUrl,
+    required String text,
+    required String? parentCommentId,
   }) async {
     if (_isSending) return false;
 
     final cleanedText = text.trim();
 
     if (cleanedText.isEmpty) {
-      _sendErrorMessage = 'Schreibe zuerst einen Kommentar.';
+      _sendErrorMessage = parentCommentId == null
+          ? 'Schreibe zuerst einen Kommentar.'
+          : 'Schreibe zuerst eine Antwort.';
       _notify();
       return false;
     }
 
     if (cleanedText.length > 500) {
-      _sendErrorMessage = 'Ein Kommentar darf höchstens 500 Zeichen haben.';
+      _sendErrorMessage = parentCommentId == null
+          ? 'Ein Kommentar darf höchstens 500 Zeichen haben.'
+          : 'Eine Antwort darf höchstens 500 Zeichen haben.';
       _notify();
       return false;
     }
 
     _isSending = true;
+    _replyingToCommentId = parentCommentId?.trim();
     _sendErrorMessage = null;
     _notify();
 
     try {
-      await _repository.createComment(
-        postId: postId,
-        authorId: authorId,
-        authorName: authorName,
-        authorAvatarUrl: authorAvatarUrl,
-        text: cleanedText,
-      );
+      if (parentCommentId == null) {
+        await _repository.createComment(
+          postId: postId,
+          authorId: authorId,
+          authorName: authorName,
+          authorAvatarUrl: authorAvatarUrl,
+          text: cleanedText,
+        );
+      } else {
+        await _repository.createReply(
+          postId: postId,
+          parentCommentId: parentCommentId,
+          authorId: authorId,
+          authorName: authorName,
+          authorAvatarUrl: authorAvatarUrl,
+          text: cleanedText,
+        );
+      }
 
       await _reloadAfterCreate(postId: postId);
       return true;
     } catch (error, stackTrace) {
       debugPrint(
-        'ProfilePostCommentsController: Kommentar konnte nicht gesendet werden.',
+        parentCommentId == null
+            ? 'ProfilePostCommentsController: Kommentar konnte nicht gesendet werden.'
+            : 'ProfilePostCommentsController: Antwort konnte nicht gesendet werden.',
       );
       debugPrint('$error');
       debugPrintStack(stackTrace: stackTrace);
 
-      _sendErrorMessage = 'Kommentar konnte nicht gesendet werden.';
+      _sendErrorMessage = parentCommentId == null
+          ? 'Kommentar konnte nicht gesendet werden.'
+          : 'Antwort konnte nicht gesendet werden.';
       return false;
     } finally {
       _isSending = false;
+      _replyingToCommentId = null;
       _notify();
     }
   }

@@ -66,12 +66,49 @@ class ProfilePostCommentsRepository {
     required String authorName,
     required String authorAvatarUrl,
     required String text,
+  }) {
+    return _createComment(
+      postId: postId,
+      authorId: authorId,
+      authorName: authorName,
+      authorAvatarUrl: authorAvatarUrl,
+      text: text,
+      parentCommentId: null,
+    );
+  }
+
+  Future<void> createReply({
+    required String postId,
+    required String parentCommentId,
+    required String authorId,
+    required String authorName,
+    required String authorAvatarUrl,
+    required String text,
+  }) {
+    return _createComment(
+      postId: postId,
+      authorId: authorId,
+      authorName: authorName,
+      authorAvatarUrl: authorAvatarUrl,
+      text: text,
+      parentCommentId: parentCommentId,
+    );
+  }
+
+  Future<void> _createComment({
+    required String postId,
+    required String authorId,
+    required String authorName,
+    required String authorAvatarUrl,
+    required String text,
+    required String? parentCommentId,
   }) async {
     final cleanedPostId = postId.trim();
     final cleanedAuthorId = authorId.trim();
     final cleanedAuthorName = authorName.trim();
     final cleanedAvatarUrl = authorAvatarUrl.trim();
     final cleanedText = text.trim();
+    final cleanedParentCommentId = parentCommentId?.trim() ?? '';
 
     if (cleanedPostId.isEmpty) {
       throw ArgumentError.value(postId, 'postId', 'Beitrags-ID fehlt.');
@@ -105,8 +142,22 @@ class ProfilePostCommentsRepository {
       );
     }
 
+    if (parentCommentId != null &&
+        (cleanedParentCommentId.isEmpty ||
+            cleanedParentCommentId.length > 220)) {
+      throw ArgumentError.value(
+        parentCommentId,
+        'parentCommentId',
+        'Die Antwort-Zuordnung ist ungültig.',
+      );
+    }
+
     final postRef = _firestore.collection('feed_posts').doc(cleanedPostId);
-    final commentRef = postRef.collection('comments').doc();
+    final commentsRef = postRef.collection('comments');
+    final commentRef = commentsRef.doc();
+    final parentRef = cleanedParentCommentId.isEmpty
+        ? null
+        : commentsRef.doc(cleanedParentCommentId);
     final now = Timestamp.now();
 
     await _firestore.runTransaction((transaction) async {
@@ -119,6 +170,25 @@ class ProfilePostCommentsRepository {
       final postData = postSnapshot.data();
       if (postData == null) {
         throw StateError('Der Beitrag konnte nicht gelesen werden.');
+      }
+
+      DocumentSnapshot<Map<String, dynamic>>? parentSnapshot;
+
+      if (parentRef != null) {
+        parentSnapshot = await transaction.get(parentRef);
+
+        if (!parentSnapshot.exists) {
+          throw StateError('Der Kommentar existiert nicht mehr.');
+        }
+
+        final parentData = parentSnapshot.data();
+        if (parentData == null) {
+          throw StateError('Der Kommentar konnte nicht gelesen werden.');
+        }
+
+        if (parentData['isDeleted'] == true) {
+          throw StateError('Auf einen gelöschten Kommentar kann nicht geantwortet werden.');
+        }
       }
 
       final rawCommentCount = postData['commentCount'];
@@ -139,7 +209,8 @@ class ProfilePostCommentsRepository {
           'createdAt': now,
           'updatedAt': null,
           'deletedAt': null,
-          'parentCommentId': null,
+          'parentCommentId':
+              cleanedParentCommentId.isEmpty ? null : cleanedParentCommentId,
           'likeCount': 0,
           'reactionCount': 0,
           'reactionCounts': <String, int>{
@@ -163,6 +234,22 @@ class ProfilePostCommentsRepository {
           'updatedAt': now,
         },
       );
+
+      if (parentRef != null && parentSnapshot != null) {
+        final parentData = parentSnapshot.data();
+        final rawReplyCount = parentData?['replyCount'];
+        final currentReplyCount = rawReplyCount is num
+            ? rawReplyCount.toInt().clamp(0, 2147483647)
+            : 0;
+
+        transaction.update(
+          parentRef,
+          <String, dynamic>{
+            'replyCount': currentReplyCount + 1,
+            'updatedAt': now,
+          },
+        );
+      }
     });
   }
 }
