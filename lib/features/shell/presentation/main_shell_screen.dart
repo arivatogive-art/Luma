@@ -2,11 +2,10 @@
 
 import 'package:flutter/material.dart';
 
-import '../../../features/notifications/application/notification_controller.dart';
-import '../../../features/notifications/presentation/screens/notifications_activity_hub_screen.dart';
-import '../../../presentation/screens/feed_screen.dart';
-import '../../../presentation/screens/messenger_preview_screen.dart';
-import '../../../presentation/screens/profile_screen.dart';
+import '../../messenger/presentation/messenger_screen.dart';
+import '../../notifications/application/notification_controller.dart';
+import '../../notifications/presentation/notifications_screen.dart';
+import '../../profile/presentation/profile_screen.dart';
 
 class MainShellScreen extends StatefulWidget {
   const MainShellScreen({
@@ -21,78 +20,243 @@ class MainShellScreen extends StatefulWidget {
 }
 
 class _MainShellScreenState extends State<MainShellScreen> {
-  static const Color _orange = Color(0xFFE58A2B);
-
   late int _currentIndex;
   late final LumaNotificationController _notificationController;
-  late final List<Widget> _pages;
+
+  static const List<_ShellDestination> _destinations = <_ShellDestination>[
+    _ShellDestination(
+      label: 'Messenger',
+      icon: Icons.chat_bubble_outline_rounded,
+      selectedIcon: Icons.chat_bubble_rounded,
+    ),
+    _ShellDestination(
+      label: 'Benachrichtigungen',
+      icon: Icons.notifications_none_rounded,
+      selectedIcon: Icons.notifications_rounded,
+    ),
+    _ShellDestination(
+      label: 'Profil',
+      icon: Icons.person_outline_rounded,
+      selectedIcon: Icons.person_rounded,
+    ),
+  ];
 
   @override
   void initState() {
     super.initState();
 
-    _currentIndex = widget.initialIndex.clamp(0, 3).toInt();
+    _notificationController = LumaNotificationController()
+      ..addListener(_handleNotificationChanged);
 
-    _notificationController = LumaNotificationController();
     _notificationController.initialize();
 
-    _pages = [
-      const FeedScreen(),
-      const MessengerPreviewScreen(),
-      LumaNotificationsActivityHubScreen(
-        notificationController: _notificationController,
-      ),
-      const ProfileScreen(isOwnProfile: true),
-    ];
+    _currentIndex = widget.initialIndex.clamp(
+      0,
+      _destinations.length - 1,
+    );
   }
 
   @override
   void dispose() {
+    _notificationController.removeListener(_handleNotificationChanged);
     _notificationController.dispose();
     super.dispose();
   }
 
+  void _handleNotificationChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F2F5),
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: false,
+        titleSpacing: 18,
+        title: Text(
+          'Luma',
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.4,
+            color: colorScheme.onSurface,
+          ),
+        ),
+        actions: <Widget>[
+          IconButton(
+            tooltip: 'Suchen',
+            onPressed: _openSearch,
+            icon: const Icon(
+              Icons.search_rounded,
+              size: 25,
+            ),
+          ),
+          const SizedBox(width: 2),
+          TextButton(
+            onPressed: _openMyLuma,
+            style: TextButton.styleFrom(
+              foregroundColor: colorScheme.onSurface,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+            ),
+            child: Text(
+              'Mein Luma',
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: colorScheme.onSurface,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: IndexedStack(
         index: _currentIndex,
-        children: _pages,
+        children: <Widget>[
+          const MessengerScreen(),
+          NotificationsScreen(
+            controller: _notificationController,
+          ),
+          const ProfileScreen(),
+        ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
-        onDestinationSelected: (index) {
-          if (_currentIndex == index) return;
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        indicatorColor: _orange.withValues(alpha: 0.14),
-        backgroundColor: Colors.white,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home_rounded, color: _orange),
-            label: 'Start',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline_rounded),
-            selectedIcon: Icon(Icons.chat_bubble_rounded, color: _orange),
-            label: 'Messenger',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.notifications_none_rounded),
-            selectedIcon: Icon(Icons.notifications_rounded, color: _orange),
-            label: 'Mitteilungen',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline_rounded),
-            selectedIcon: Icon(Icons.person_rounded, color: _orange),
-            label: 'Profil',
-          ),
-        ],
+        onDestinationSelected: _selectDestination,
+        destinations: List<NavigationDestination>.generate(
+          _destinations.length,
+          (index) {
+            final destination = _destinations[index];
+
+            return NavigationDestination(
+              icon: _buildDestinationIcon(
+                context: context,
+                index: index,
+                icon: destination.icon,
+                selected: false,
+              ),
+              selectedIcon: _buildDestinationIcon(
+                context: context,
+                index: index,
+                icon: destination.selectedIcon,
+                selected: true,
+              ),
+              label: destination.label,
+            );
+          },
+          growable: false,
+        ),
       ),
     );
   }
+
+  Widget _buildDestinationIcon({
+    required BuildContext context,
+    required int index,
+    required IconData icon,
+    required bool selected,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final baseIcon = Icon(
+      icon,
+      color: selected ? colorScheme.primary : null,
+    );
+
+    if (index != 1 || _notificationController.unreadCount <= 0) {
+      return baseIcon;
+    }
+
+    final count = _notificationController.unreadCount;
+    final label = count > 99 ? '99+' : '$count';
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: <Widget>[
+        baseIcon,
+        Positioned(
+          right: -13,
+          top: -8,
+          child: Container(
+            constraints: const BoxConstraints(
+              minWidth: 18,
+              minHeight: 18,
+            ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 5,
+              vertical: 2,
+            ),
+            decoration: BoxDecoration(
+              color: colorScheme.error,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: colorScheme.surface,
+                width: 1.5,
+              ),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onError,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    height: 1,
+                  ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _selectDestination(int index) {
+    if (index == _currentIndex) {
+      return;
+    }
+
+    setState(() {
+      _currentIndex = index;
+    });
+  }
+
+  void _openSearch() {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Die Suche wird als eigener Bereich angebunden.'),
+        ),
+      );
+  }
+
+  void _openMyLuma() {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Mein Luma wird als Einstellungsbereich angebunden.'),
+        ),
+      );
+  }
+}
+
+class _ShellDestination {
+  const _ShellDestination({
+    required this.label,
+    required this.icon,
+    required this.selectedIcon,
+  });
+
+  final String label;
+  final IconData icon;
+  final IconData selectedIcon;
 }
