@@ -252,7 +252,18 @@ class _MainShellScreenState extends State<MainShellScreen> {
   Future<void> _openNotificationTarget(
     LumaNotificationModel notification,
   ) async {
-    if (!_supportsPostTarget(notification.type)) {
+    final isProfileTarget =
+        notification.targetType == LumaNotificationTargetType.profile;
+
+    if (!isProfileTarget && !_supportsPostTarget(notification.type)) {
+      return;
+    }
+
+    final profileUserId = isProfileTarget
+        ? notification.referenceId.trim()
+        : '';
+
+    if (isProfileTarget && profileUserId.isEmpty) {
       return;
     }
 
@@ -268,9 +279,17 @@ class _MainShellScreenState extends State<MainShellScreen> {
     try {
       await navigator.push<void>(
         MaterialPageRoute<void>(
-          builder: (_) => NotificationPostTargetScreen(
-            notification: notification,
-          ),
+          builder: (_) {
+            if (isProfileTarget) {
+              return _NotificationProfileTargetScreen(
+                userId: profileUserId,
+              );
+            }
+
+            return NotificationPostTargetScreen(
+              notification: notification,
+            );
+          },
         ),
       );
     } finally {
@@ -330,6 +349,28 @@ class _MainShellScreenState extends State<MainShellScreen> {
           content: Text('Mein Luma wird als Einstellungsbereich angebunden.'),
         ),
       );
+  }
+}
+
+class _NotificationProfileTargetScreen extends StatelessWidget {
+  const _NotificationProfileTargetScreen({
+    required this.userId,
+  });
+
+  final String userId;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Profil'),
+        elevation: 0,
+        scrolledUnderElevation: 0,
+      ),
+      body: ProfileScreen(
+        userId: userId,
+      ),
+    );
   }
 }
 
