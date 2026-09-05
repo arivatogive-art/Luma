@@ -81,6 +81,22 @@ class SettingsRepository {
     );
   }
 
+  Future<void> saveAppearanceMode({
+    required String userId,
+    required AppAppearanceMode mode,
+  }) async {
+    final cleanedUserId = userId.trim();
+    if (cleanedUserId.isEmpty) return;
+
+    await _settingsRef(cleanedUserId).set(
+      {
+        'appAppearanceMode': mode.name,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
   Future<SettingsRemoteSnapshot?> saveSettingsAndLoad({
     required String userId,
     required SettingsState state,
