@@ -4,6 +4,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../domain/profile_post_model.dart';
 
+class ProfilePostDeleteResult {
+  const ProfilePostDeleteResult({
+    required this.imageStoragePath,
+  });
+
+  final String imageStoragePath;
+}
+
 class ProfilePostRepository {
   ProfilePostRepository({
     FirebaseFirestore? firestore,
@@ -213,6 +221,72 @@ class ProfilePostRepository {
       id: postRef.id,
       data: data,
     );
+  }
+
+  Future<ProfilePostDeleteResult> deletePost({
+    required String postId,
+    required String currentUserId,
+  }) async {
+    final cleanedPostId = postId.trim();
+    final cleanedCurrentUserId = currentUserId.trim();
+
+    if (cleanedPostId.isEmpty) {
+      throw StateError('profile-post-missing-post-id');
+    }
+
+    if (cleanedCurrentUserId.isEmpty) {
+      throw StateError('profile-post-missing-user-id');
+    }
+
+    final postRef = _firestore.collection('feed_posts').doc(cleanedPostId);
+    final snapshot = await postRef.get();
+
+    if (!snapshot.exists) {
+      return const ProfilePostDeleteResult(
+        imageStoragePath: '',
+      );
+    }
+
+    final data = snapshot.data() ?? <String, dynamic>{};
+    final authorId = _readString(data['authorId']);
+    final userId = _readString(data['userId']);
+    final ownerId = authorId.isNotEmpty ? authorId : userId;
+
+    if (ownerId != cleanedCurrentUserId) {
+      throw StateError('profile-post-delete-not-owner');
+    }
+
+    final imageStoragePath = _readFirstString(
+      data,
+      const <String>[
+        'imageStoragePath',
+        'feedImageStoragePath',
+      ],
+    );
+
+    await postRef.delete();
+
+    return ProfilePostDeleteResult(
+      imageStoragePath: imageStoragePath,
+    );
+  }
+
+  String _readFirstString(
+    Map<String, dynamic> data,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      final value = _readString(data[key]);
+      if (value.isNotEmpty) return value;
+    }
+    return '';
+  }
+
+  String _readString(dynamic value) {
+    if (value is String) {
+      return value.trim();
+    }
+    return '';
   }
 
   bool _canViewPost({

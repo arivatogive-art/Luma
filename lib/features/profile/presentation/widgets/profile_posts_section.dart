@@ -12,14 +12,20 @@ class ProfilePostsSection extends StatelessWidget {
     required this.profile,
     required this.state,
     required this.posts,
+    required this.isOwnProfile,
     required this.onOpenPost,
+    required this.onDeletePost,
+    this.deletingPostId,
     this.errorMessage,
   });
 
   final ProfileModel profile;
   final ProfilePostsLoadState state;
   final List<ProfilePostModel> posts;
+  final bool isOwnProfile;
   final ValueChanged<ProfilePostModel> onOpenPost;
+  final Future<void> Function(ProfilePostModel post) onDeletePost;
+  final String? deletingPostId;
   final String? errorMessage;
 
   @override
@@ -80,7 +86,10 @@ class ProfilePostsSection extends StatelessWidget {
                   child: _ProfilePostCard(
                     profile: profile,
                     post: post,
+                    isOwnProfile: isOwnProfile,
+                    isDeleting: deletingPostId == post.id,
                     onTap: () => onOpenPost(post),
+                    onDelete: () => onDeletePost(post),
                   ),
                 ),
               )
@@ -94,12 +103,18 @@ class _ProfilePostCard extends StatelessWidget {
   const _ProfilePostCard({
     required this.profile,
     required this.post,
+    required this.isOwnProfile,
+    required this.isDeleting,
     required this.onTap,
+    required this.onDelete,
   });
 
   final ProfileModel profile;
   final ProfilePostModel post;
+  final bool isOwnProfile;
+  final bool isDeleting;
   final VoidCallback onTap;
+  final Future<void> Function() onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -167,6 +182,42 @@ class _ProfilePostCard extends StatelessWidget {
                       ],
                     ),
                   ),
+                  if (isOwnProfile)
+                    isDeleting
+                        ? const SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: Center(
+                              child: SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                          )
+                        : PopupMenuButton<String>(
+                            tooltip: 'Beitragsoptionen',
+                            icon: const Icon(Icons.more_horiz_rounded),
+                            onSelected: (value) {
+                              if (value == 'delete') {
+                                onDelete();
+                              }
+                            },
+                            itemBuilder: (context) => const <PopupMenuEntry<String>>[
+                              PopupMenuItem<String>(
+                                value: 'delete',
+                                child: Row(
+                                  children: <Widget>[
+                                    Icon(Icons.delete_outline_rounded),
+                                    SizedBox(width: 10),
+                                    Text('Beitrag löschen'),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                 ],
               ),
               if (post.hasText) ...<Widget>[

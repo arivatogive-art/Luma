@@ -211,18 +211,85 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  void _openPost(ProfilePostModel post) {
+  Future<void> _openPost(ProfilePostModel post) async {
     final profile = _profileController.profile;
     if (profile == null) return;
 
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
         builder: (_) => ProfilePostDetailScreen(
           profile: profile,
           post: post,
+          isOwnProfile: _profileController.isOwnProfile,
+          onDeletePost: _deletePost,
         ),
       ),
     );
+  }
+
+  Future<bool> _deletePost(ProfilePostModel post) async {
+    if (!_profileController.isOwnProfile || _postsController.isDeleting) {
+      return false;
+    }
+
+    final currentUserId = _profileController.currentUserId.trim();
+    if (currentUserId.isEmpty) {
+      return false;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+
+        return AlertDialog(
+          title: const Text('Beitrag löschen?'),
+          content: const Text(
+            'Möchtest du diesen Beitrag wirklich löschen? '
+            'Das kann nicht rückgängig gemacht werden.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Abbrechen'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: TextButton.styleFrom(
+                foregroundColor: theme.colorScheme.error,
+              ),
+              child: const Text('Löschen'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return false;
+    }
+
+    final deleted = await _postsController.deletePost(
+      currentUserId: currentUserId,
+      post: post,
+    );
+
+    if (!mounted) return deleted;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            deleted
+                ? 'Beitrag wurde gelöscht.'
+                : (_postsController.errorMessage ??
+                    'Beitrag konnte nicht gelöscht werden.'),
+          ),
+        ),
+      );
+
+    return deleted;
   }
 
   Future<void> _openEditProfile() async {
@@ -396,7 +463,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onOpenPhoto: (photo) {
             _openPhoto(photo);
           },
-          onOpenPost: _openPost,
+          onOpenPost: (post) {
+            _openPost(post);
+          },
+          onDeletePost: _deletePost,
         );
 
       case ProfileLoadState.notFound:
@@ -435,6 +505,7 @@ class _ProfileContent extends StatelessWidget {
     required this.onOpenAllPhotos,
     required this.onOpenPhoto,
     required this.onOpenPost,
+    required this.onDeletePost,
   });
 
   final ProfileModel profile;
@@ -454,6 +525,7 @@ class _ProfileContent extends StatelessWidget {
   final VoidCallback onOpenAllPhotos;
   final ValueChanged<ProfilePhotoModel> onOpenPhoto;
   final ValueChanged<ProfilePostModel> onOpenPost;
+  final Future<bool> Function(ProfilePostModel post) onDeletePost;
 
   @override
   Widget build(BuildContext context) {
@@ -502,8 +574,13 @@ class _ProfileContent extends StatelessWidget {
               profile: profile,
               state: postsController.state,
               posts: postsController.posts,
+              isOwnProfile: isOwnProfile,
+              deletingPostId: postsController.deletingPostId,
               errorMessage: postsController.errorMessage,
               onOpenPost: onOpenPost,
+              onDeletePost: (post) async {
+                await onDeletePost(post);
+              },
             ),
           ],
         ),

@@ -10,10 +10,14 @@ class ProfilePostDetailScreen extends StatelessWidget {
     super.key,
     required this.profile,
     required this.post,
+    required this.isOwnProfile,
+    required this.onDeletePost,
   });
 
   final ProfileModel profile;
   final ProfilePostModel post;
+  final bool isOwnProfile;
+  final Future<bool> Function(ProfilePostModel post) onDeletePost;
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +34,33 @@ class ProfilePostDetailScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Beitrag'),
+        actions: <Widget>[
+          if (isOwnProfile)
+            PopupMenuButton<String>(
+              tooltip: 'Beitragsoptionen',
+              icon: const Icon(Icons.more_horiz_rounded),
+              onSelected: (value) async {
+                if (value != 'delete') return;
+
+                final deleted = await onDeletePost(post);
+                if (!context.mounted || !deleted) return;
+
+                Navigator.of(context).pop(true);
+              },
+              itemBuilder: (context) => const <PopupMenuEntry<String>>[
+                PopupMenuItem<String>(
+                  value: 'delete',
+                  child: Row(
+                    children: <Widget>[
+                      Icon(Icons.delete_outline_rounded),
+                      SizedBox(width: 10),
+                      Text('Beitrag löschen'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),

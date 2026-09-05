@@ -30,11 +30,15 @@ class ProfilePostsController extends ChangeNotifier {
   String? _errorMessage;
   bool _disposed = false;
   bool _isCreating = false;
+  bool _isDeleting = false;
+  String? _deletingPostId;
 
   ProfilePostsLoadState get state => _state;
   List<ProfilePostModel> get posts => _posts;
   String? get errorMessage => _errorMessage;
   bool get isCreating => _isCreating;
+  bool get isDeleting => _isDeleting;
+  String? get deletingPostId => _deletingPostId;
 
   bool get isLoading =>
       _state == ProfilePostsLoadState.initial ||
@@ -176,6 +180,71 @@ class ProfilePostsController extends ChangeNotifier {
     }
   }
 
+  Future<bool> deletePost({
+    required String currentUserId,
+    required ProfilePostModel post,
+  }) async {
+    if (_isDeleting) return false;
+
+    final cleanedCurrentUserId = currentUserId.trim();
+    final cleanedPostId = post.id.trim();
+
+    if (cleanedCurrentUserId.isEmpty || cleanedPostId.isEmpty) {
+      _errorMessage = 'Der Beitrag konnte nicht eindeutig zugeordnet werden.';
+      _notify();
+      return false;
+    }
+
+    _isDeleting = true;
+    _deletingPostId = cleanedPostId;
+    _errorMessage = null;
+    _notify();
+
+    ProfilePostDeleteResult deleteResult;
+
+    try {
+      deleteResult = await _repository.deletePost(
+        postId: cleanedPostId,
+        currentUserId: cleanedCurrentUserId,
+      );
+    } catch (error, stackTrace) {
+      debugPrint(
+        'ProfilePostsController: Beitrag konnte nicht gelöscht werden.',
+      );
+      debugPrint('$error');
+      debugPrintStack(stackTrace: stackTrace);
+
+      _errorMessage = _messageForDeleteError(error);
+      _isDeleting = false;
+      _deletingPostId = null;
+      _notify();
+      return false;
+    }
+
+    _removePost(cleanedPostId);
+
+    final storagePath = deleteResult.imageStoragePath.trim();
+    if (storagePath.isNotEmpty) {
+      try {
+        await _storageRepository.deletePostImageByStoragePath(
+          storagePath: storagePath,
+        );
+      } catch (error, stackTrace) {
+        debugPrint(
+          'ProfilePostsController: Beitragsbild konnte nach dem '
+          'Löschen des Beitrags nicht aus Storage entfernt werden.',
+        );
+        debugPrint('$error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+    }
+
+    _isDeleting = false;
+    _deletingPostId = null;
+    _notify();
+    return true;
+  }
+
   void _prependPost(ProfilePostModel createdPost) {
     _posts = List<ProfilePostModel>.unmodifiable(
       <ProfilePostModel>[
@@ -185,6 +254,14 @@ class ProfilePostsController extends ChangeNotifier {
     );
 
     _state = ProfilePostsLoadState.loaded;
+  }
+
+  void _removePost(String postId) {
+    _posts = List<ProfilePostModel>.unmodifiable(
+      _posts.where((post) => post.id != postId),
+    );
+    _state = ProfilePostsLoadState.loaded;
+    _notify();
   }
 
   String _messageForCreateError(Object error) {
@@ -222,6 +299,21 @@ class ProfilePostsController extends ChangeNotifier {
     }
 
     return 'Dein Beitrag konnte gerade nicht veröffentlicht werden.';
+  }
+
+  String _messageForDeleteError(Object error) {
+    final value = error.toString();
+
+    if (value.contains('profile-post-delete-not-owner')) {
+      return 'Du kannst nur deine eigenen Beiträge löschen.';
+    }
+
+    if (value.contains('profile-post-missing-user-id') ||
+        value.contains('profile-post-missing-post-id')) {
+      return 'Der Beitrag konnte nicht eindeutig zugeordnet werden.';
+    }
+
+    return 'Der Beitrag konnte gerade nicht gelöscht werden.';
   }
 
   void _setState(ProfilePostsLoadState nextState) {
