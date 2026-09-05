@@ -35,6 +35,7 @@ class _NotificationPostTargetScreenState
   ProfileModel? _profile;
   String? _errorMessage;
   bool _isLoading = true;
+  bool _canRetry = true;
 
   @override
   void initState() {
@@ -54,6 +55,7 @@ class _NotificationPostTargetScreenState
       setState(() {
         _isLoading = true;
         _errorMessage = null;
+        _canRetry = true;
       });
     }
 
@@ -66,6 +68,7 @@ class _NotificationPostTargetScreenState
           _profile = null;
           _errorMessage = 'Dieser Beitrag ist nicht mehr verfügbar.';
           _isLoading = false;
+          _canRetry = false;
         });
         return;
       }
@@ -78,6 +81,7 @@ class _NotificationPostTargetScreenState
           _profile = null;
           _errorMessage = 'Der Beitrag konnte keinem Profil zugeordnet werden.';
           _isLoading = false;
+          _canRetry = false;
         });
         return;
       }
@@ -90,6 +94,7 @@ class _NotificationPostTargetScreenState
           _profile = null;
           _errorMessage = 'Das Profil zu diesem Beitrag ist nicht verfügbar.';
           _isLoading = false;
+          _canRetry = false;
         });
         return;
       }
@@ -100,6 +105,30 @@ class _NotificationPostTargetScreenState
         _profile = profile;
         _errorMessage = null;
         _isLoading = false;
+        _canRetry = true;
+      });
+    } on FirebaseException catch (error, stackTrace) {
+      debugPrint(
+        'NotificationPostTargetScreen: Firebase-Ziel konnte nicht geladen werden.',
+      );
+      debugPrint('${error.code}: ${error.message}');
+      debugPrintStack(stackTrace: stackTrace);
+
+      if (!mounted) return;
+
+      final isPermissionDenied = error.code == 'permission-denied';
+      final isNotFound = error.code == 'not-found';
+
+      setState(() {
+        _post = null;
+        _profile = null;
+        _errorMessage = isPermissionDenied
+            ? 'Du kannst diesen Beitrag nicht mehr ansehen.'
+            : isNotFound
+                ? 'Dieser Beitrag ist nicht mehr verfügbar.'
+                : 'Der Beitrag konnte gerade nicht geöffnet werden.';
+        _isLoading = false;
+        _canRetry = !isPermissionDenied && !isNotFound;
       });
     } catch (error, stackTrace) {
       debugPrint(
@@ -112,8 +141,9 @@ class _NotificationPostTargetScreenState
       setState(() {
         _post = null;
         _profile = null;
-        _errorMessage = 'Der Beitrag konnte nicht geöffnet werden.';
+        _errorMessage = 'Der Beitrag konnte gerade nicht geöffnet werden.';
         _isLoading = false;
+        _canRetry = true;
       });
     }
   }
@@ -125,11 +155,15 @@ class _NotificationPostTargetScreenState
       try {
         final post = await _postRepository.fetchPostById(postId: postId);
         if (post != null) return post;
-      } catch (error) {
+      } on FirebaseException catch (error) {
         debugPrint(
-          'NotificationPostTargetScreen: Kandidat $postId war kein '
-          'ladbarer Zielbeitrag: $error',
+          'NotificationPostTargetScreen: Firebase-Fehler für Kandidat '
+          '$postId: ${error.code}',
         );
+
+        // Ein echter Berechtigungs-, Netzwerk- oder Backendfehler darf nicht
+        // als "Beitrag existiert nicht" verschluckt werden.
+        rethrow;
       }
     }
 
@@ -323,10 +357,16 @@ class _NotificationPostTargetScreenState
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
-                OutlinedButton(
-                  onPressed: _load,
-                  child: const Text('Erneut versuchen'),
-                ),
+                if (_canRetry)
+                  OutlinedButton(
+                    onPressed: _load,
+                    child: const Text('Erneut versuchen'),
+                  )
+                else
+                  TextButton(
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    child: const Text('Zurück'),
+                  ),
               ],
             ),
           ),
