@@ -2,6 +2,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../comments/application/profile_post_comments_controller.dart';
+import '../../comments/domain/profile_post_comment_model.dart';
 import '../domain/profile_model.dart';
 import '../domain/profile_post_model.dart';
 
@@ -301,6 +303,10 @@ class ProfilePostDetailScreen extends StatelessWidget {
               Text('${post.commentCount}'),
             ],
           ),
+          const SizedBox(height: 18),
+          _ProfilePostCommentsSection(
+            postId: post.id,
+          ),
         ],
       ),
     );
@@ -338,5 +344,348 @@ class ProfilePostDetailScreen extends StatelessWidget {
     final minute = local.minute.toString().padLeft(2, '0');
 
     return '$day.$month.${local.year} · $hour:$minute';
+  }
+}
+
+class _ProfilePostCommentsSection extends StatefulWidget {
+  const _ProfilePostCommentsSection({
+    required this.postId,
+  });
+
+  final String postId;
+
+  @override
+  State<_ProfilePostCommentsSection> createState() =>
+      _ProfilePostCommentsSectionState();
+}
+
+class _ProfilePostCommentsSectionState
+    extends State<_ProfilePostCommentsSection> {
+  late final ProfilePostCommentsController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = ProfilePostCommentsController();
+    _controller.addListener(_handleControllerChanged);
+    _controller.load(postId: widget.postId);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProfilePostCommentsSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.postId != widget.postId) {
+      _controller.load(postId: widget.postId);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_handleControllerChanged);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleControllerChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          'Kommentare',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildContent(context),
+      ],
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
+    switch (_controller.state) {
+      case ProfilePostCommentsLoadState.initial:
+      case ProfilePostCommentsLoadState.loading:
+        return const SizedBox(
+          height: 82,
+          child: Center(
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        );
+
+      case ProfilePostCommentsLoadState.error:
+        return _CommentMessage(
+          icon: Icons.cloud_off_outlined,
+          text:
+              _controller.errorMessage ?? 'Kommentare konnten nicht geladen werden.',
+          actionLabel: 'Erneut versuchen',
+          onAction: () => _controller.reload(postId: widget.postId),
+        );
+
+      case ProfilePostCommentsLoadState.loaded:
+        final rootComments = _controller.rootComments;
+
+        if (rootComments.isEmpty) {
+          return const _CommentMessage(
+            icon: Icons.chat_bubble_outline_rounded,
+            text: 'Noch keine Kommentare.',
+          );
+        }
+
+        return Column(
+          children: rootComments
+              .map(
+                (comment) => Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: _CommentThread(
+                    comment: comment,
+                    replies: _controller.repliesFor(comment.id),
+                  ),
+                ),
+              )
+              .toList(growable: false),
+        );
+    }
+  }
+}
+
+class _CommentThread extends StatelessWidget {
+  const _CommentThread({
+    required this.comment,
+    required this.replies,
+  });
+
+  final ProfilePostCommentModel comment;
+  final List<ProfilePostCommentModel> replies;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: <Widget>[
+        _CommentTile(comment: comment),
+        if (replies.isNotEmpty) ...<Widget>[
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.only(left: 38),
+            child: Column(
+              children: replies
+                  .map(
+                    (reply) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _CommentTile(
+                        comment: reply,
+                        isReply: true,
+                      ),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _CommentTile extends StatelessWidget {
+  const _CommentTile({
+    required this.comment,
+    this.isReply = false,
+  });
+
+  final ProfilePostCommentModel comment;
+  final bool isReply;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final avatarUrl = comment.authorAvatarUrl.trim();
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        CircleAvatar(
+          radius: isReply ? 15 : 18,
+          backgroundColor: theme.colorScheme.surfaceContainerHighest,
+          foregroundImage:
+              avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+          child: avatarUrl.isEmpty
+              ? Icon(
+                  Icons.person_outline_rounded,
+                  size: isReply ? 17 : 20,
+                )
+              : null,
+        ),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Text(
+                        comment.authorName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _commentDateLabel(comment.createdAt),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  comment.text,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    height: 1.35,
+                  ),
+                ),
+                if (comment.reactionCount > 0 ||
+                    comment.replyCount > 0) ...<Widget>[
+                  const SizedBox(height: 7),
+                  Row(
+                    children: <Widget>[
+                      if (comment.reactionCount > 0) ...<Widget>[
+                        Icon(
+                          Icons.thumb_up_alt_outlined,
+                          size: 14,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${comment.reactionCount}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                      if (comment.reactionCount > 0 &&
+                          comment.replyCount > 0)
+                        const SizedBox(width: 12),
+                      if (comment.replyCount > 0) ...<Widget>[
+                        Icon(
+                          Icons.reply_rounded,
+                          size: 15,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${comment.replyCount}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  static String _commentDateLabel(DateTime value) {
+    if (value.millisecondsSinceEpoch <= 0) return '';
+
+    final local = value.toLocal();
+    final now = DateTime.now();
+    final sameDay = local.year == now.year &&
+        local.month == now.month &&
+        local.day == now.day;
+
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+
+    if (sameDay) {
+      return '$hour:$minute';
+    }
+
+    final day = local.day.toString().padLeft(2, '0');
+    final month = local.month.toString().padLeft(2, '0');
+
+    return '$day.$month.';
+  }
+}
+
+class _CommentMessage extends StatelessWidget {
+  const _CommentMessage({
+    required this.icon,
+    required this.text,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final IconData icon;
+  final String text;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 22,
+      ),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        children: <Widget>[
+          Icon(
+            icon,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            text,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          if (actionLabel != null && onAction != null) ...<Widget>[
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: onAction,
+              child: Text(actionLabel!),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
