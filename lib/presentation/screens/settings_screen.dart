@@ -8,8 +8,11 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'account_settings_screen.dart';
+
 import '../../app/theme.dart';
 import 'appearance_settings_screen.dart';
+import 'security_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -20,7 +23,9 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _openAccountSettings() async {
-    _showPendingAreaMessage('Konto');
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const AccountSettingsScreen()),
+    );
   }
 
   Future<void> _openPrivacySettings() async {
@@ -32,7 +37,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _openSecuritySettings() async {
-    _showPendingAreaMessage('Sicherheit');
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const SecuritySettingsScreen()),
+    );
   }
 
   Future<void> _openVisibilitySettings() async {
