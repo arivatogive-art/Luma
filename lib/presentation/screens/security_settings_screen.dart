@@ -1,8 +1,8 @@
 // Pfad: lib/presentation/screens/security_settings_screen.dart
 //
-// Luma Core Rebuild 2.0 - Sicherheit & Anmeldung, Phase B2.
-// Bestehende Settings und echte Geräte-Dokumente plus kontrolliertes
-// Abmelden anderer Sitzungen über den vorhandenen Security-Vertrag.
+// Luma Core Rebuild 2.0 - Sicherheit & Anmeldung, Phase C1.
+// Bestehende Settings, echte Geräte-Dokumente, Remote-Logout und
+// read-only Sicherheitsereignisse aus users/{uid}/security_events.
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -11,8 +11,10 @@ import '../../app/theme.dart';
 import '../../application/settings_state.dart';
 import '../../data/settings_repository.dart';
 import '../../features/security/application/security_devices_controller.dart';
+import '../../features/security/application/security_events_controller.dart';
 import '../../features/security/application/security_remote_logout_service.dart';
 import '../../features/security/domain/security_device_model.dart';
+import '../../features/security/domain/security_event_model.dart';
 
 class SecuritySettingsScreen extends StatefulWidget {
   const SecuritySettingsScreen({super.key});
@@ -25,6 +27,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final SettingsRepository _settingsRepository = SettingsRepository();
   late final SecurityDevicesController _devicesController;
+  late final SecurityEventsController _eventsController;
   late final SecurityRemoteLogoutService _remoteLogoutService;
 
   SettingsState? _settings;
@@ -38,19 +41,29 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
   void initState() {
     super.initState();
     _devicesController = SecurityDevicesController();
+    _eventsController = SecurityEventsController();
     _remoteLogoutService = SecurityRemoteLogoutService();
     _devicesController.addListener(_onDevicesChanged);
+    _eventsController.addListener(_onEventsChanged);
     _load();
   }
 
   @override
   void dispose() {
     _devicesController.removeListener(_onDevicesChanged);
+    _eventsController.removeListener(_onEventsChanged);
     _devicesController.dispose();
+    _eventsController.dispose();
     super.dispose();
   }
 
   void _onDevicesChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _onEventsChanged() {
     if (mounted) {
       setState(() {});
     }
@@ -92,6 +105,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
       final results = await Future.wait<Object?>([
         _settingsRepository.loadSettings(userId),
         _devicesController.load(userId: userId),
+        _eventsController.load(userId: userId),
         _remoteLogoutService.loadCurrentDeviceId(),
       ]);
 
@@ -99,8 +113,8 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
       final resolvedSettings = remoteSettings is SettingsRemoteSnapshot
           ? remoteSettings.state
           : const SettingsState.initial();
-      final currentDeviceId = results.length > 2 && results[2] is String
-          ? (results[2] as String).trim()
+      final currentDeviceId = results.length > 3 && results[3] is String
+          ? (results[3] as String).trim()
           : '';
 
       if (!mounted) return;
@@ -123,8 +137,9 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final backgroundColor =
-        isDark ? LumaTheme.darkBackground : const Color(0xFFF8F4EF);
+    final backgroundColor = isDark
+        ? LumaTheme.darkBackground
+        : const Color(0xFFF8F4EF);
 
     return Scaffold(
       backgroundColor: backgroundColor,
@@ -135,10 +150,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
         surfaceTintColor: Colors.transparent,
         title: const Text(
           'Sicherheit & Anmeldung',
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
-            letterSpacing: -0.25,
-          ),
+          style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: -0.25),
         ),
       ),
       body: SafeArea(
@@ -163,10 +175,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
 
     if (_errorMessage != null) {
       return _ScrollableCenter(
-        child: _ErrorCard(
-          message: _errorMessage!,
-          onRetry: _load,
-        ),
+        child: _ErrorCard(message: _errorMessage!, onRetry: _load),
       );
     }
 
@@ -176,8 +185,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     if (user == null || settings == null) {
       return _ScrollableCenter(
         child: _ErrorCard(
-          message:
-              'Für diese Sitzung konnten keine Sicherheitsdaten gefunden werden.',
+          message: 'Für diese Sitzung konnten keine Sicherheitsdaten gefunden werden.',
           onRetry: _load,
         ),
       );
@@ -266,6 +274,14 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
         ),
         const SizedBox(height: 24),
         const _SectionHeader(
+          icon: Icons.security_update_good_outlined,
+          title: 'Sicherheitsaktivitäten',
+          subtitle: 'Echte Sicherheitsereignisse, die bereits für dein Konto gespeichert wurden.',
+        ),
+        const SizedBox(height: 12),
+        _buildSecurityEvents(),
+        const SizedBox(height: 24),
+        const _SectionHeader(
           icon: Icons.devices_outlined,
           title: 'Geräte & Sitzungen',
           subtitle:
@@ -304,6 +320,51 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     );
   }
 
+  Widget _buildSecurityEvents() {
+    if (_eventsController.isLoading) {
+      return const _SecurityCard(
+        children: [
+          Padding(
+            padding: EdgeInsets.all(18),
+            child: Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(LumaTheme.lumaOrange),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    final error = _eventsController.errorMessage;
+    if (error != null) {
+      return _InlineInfoCard(
+        icon: Icons.info_outline_rounded,
+        title: 'Sicherheitsaktivitäten nicht verfügbar',
+        text: error,
+      );
+    }
+
+    final events = _eventsController.events;
+
+    if (events.isEmpty) {
+      return const _InlineInfoCard(
+        icon: Icons.history_toggle_off_rounded,
+        title: 'Noch keine Sicherheitsereignisse',
+        text: 'Für dieses Konto wurden bisher keine einzelnen Sicherheitsereignisse gespeichert.',
+      );
+    }
+
+    return Column(
+      children: [
+        for (final event in events) ...[
+          _SecurityEventCard(event: event),
+          const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
+
   Widget _buildDeviceList() {
     if (_devicesController.isLoading) {
       return const _SecurityCard(
@@ -312,8 +373,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
             padding: EdgeInsets.all(18),
             child: Center(
               child: CircularProgressIndicator(
-                valueColor:
-                    AlwaysStoppedAnimation<Color>(LumaTheme.lumaOrange),
+                valueColor: AlwaysStoppedAnimation<Color>(LumaTheme.lumaOrange),
               ),
             ),
           ),
@@ -347,7 +407,8 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
         for (final device in devices) ...[
           _DeviceCard(
             device: device,
-            isCurrentDevice: _currentDeviceId != null &&
+            isCurrentDevice:
+                _currentDeviceId != null &&
                 device.id.trim() == _currentDeviceId,
           ),
           const SizedBox(height: 8),
@@ -356,18 +417,18 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     );
   }
 
-
   Widget _buildRemoteLogoutAction() {
     final activeDevices = _devicesController.activeDevices;
     final currentDeviceId = _currentDeviceId?.trim() ?? '';
 
-    final currentDeviceIsKnown = currentDeviceId.isNotEmpty &&
+    final currentDeviceIsKnown =
+        currentDeviceId.isNotEmpty &&
         activeDevices.any((device) => device.id.trim() == currentDeviceId);
 
     final otherActiveDeviceCount = currentDeviceIsKnown
         ? activeDevices
-            .where((device) => device.id.trim() != currentDeviceId)
-            .length
+              .where((device) => device.id.trim() != currentDeviceId)
+              .length
         : 0;
 
     if (!currentDeviceIsKnown) {
@@ -384,8 +445,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
       return const _InlineInfoCard(
         icon: Icons.verified_user_outlined,
         title: 'Keine weiteren aktiven Sitzungen',
-        text:
-            'Neben diesem Gerät ist derzeit keine weitere aktive Luma-Sitzung gespeichert.',
+        text: 'Neben diesem Gerät ist derzeit keine weitere aktive Luma-Sitzung gespeichert.',
       );
     }
 
@@ -549,8 +609,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                   ),
                   FilledButton(
                     onPressed: canSubmit
-                        ? () =>
-                            Navigator.of(dialogContext).pop(controller.text)
+                        ? () => Navigator.of(dialogContext).pop(controller.text)
                         : null,
                     child: const Text('Bestätigen'),
                   ),
@@ -565,10 +624,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     }
   }
 
-  void _showMessage(
-    String message, {
-    bool isError = false,
-  }) {
+  void _showMessage(String message, {bool isError = false}) {
     if (!mounted) return;
 
     final messenger = ScaffoldMessenger.of(context);
@@ -612,7 +668,9 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
       return 'Keine E-Mail hinterlegt';
     }
 
-    return user.emailVerified ? '$email · bestätigt' : '$email · nicht bestätigt';
+    return user.emailVerified
+        ? '$email · bestätigt'
+        : '$email · nicht bestätigt';
   }
 
   static String _twoFactorLabel(TwoFactorMethod method) {
@@ -648,11 +706,187 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
   }
 }
 
+class _SecurityEventCard extends StatelessWidget {
+  const _SecurityEventCard({required this.event});
+
+  final SecurityEventModel event;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = isDark
+        ? LumaTheme.darkSurfaceSoft
+        : const Color(0xFFFFFCF8);
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.07)
+        : const Color(0xFFE8DCCE);
+    final textPrimary = isDark
+        ? LumaTheme.darkTextPrimary
+        : const Color(0xFF102033);
+    final textSecondary = isDark
+        ? LumaTheme.darkTextSecondary
+        : const Color(0xFF756D65);
+
+    final createdAt = event.createdAt;
+    final deviceText = <String>[
+      if (event.deviceName?.trim().isNotEmpty == true) event.deviceName!.trim(),
+      if (event.platformLabel?.trim().isNotEmpty == true)
+        event.platformLabel!.trim(),
+    ].join(' · ');
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(15, 14, 15, 14),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: _severityColor(event.severity)
+                  .withValues(alpha: isDark ? 0.12 : 0.13),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              _eventIcon(event.type),
+              color: _severityColor(event.severity),
+              size: 21,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        event.title,
+                        style: TextStyle(
+                          color: textPrimary,
+                          fontSize: 14.8,
+                          fontWeight: FontWeight.w900,
+                          height: 1.2,
+                        ),
+                      ),
+                    ),
+                    if (event.isUnread)
+                      Container(
+                        width: 8,
+                        height: 8,
+                        margin: const EdgeInsets.only(top: 4, left: 8),
+                        decoration: const BoxDecoration(
+                          color: LumaTheme.lumaOrange,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  event.description,
+                  style: TextStyle(
+                    color: textSecondary,
+                    fontSize: 12.3,
+                    height: 1.42,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                if (deviceText.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.devices_other_rounded,
+                        size: 14,
+                        color: textSecondary,
+                      ),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          deviceText,
+                          style: TextStyle(
+                            color: textSecondary,
+                            fontSize: 11.5,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _DeviceBadge(text: _severityLabel(event.severity)),
+                    if (createdAt != null)
+                      Text(
+                        _SecuritySettingsScreenState._formatDateTime(createdAt),
+                        style: TextStyle(
+                          color: textSecondary,
+                          fontSize: 11.3,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Color _severityColor(SecurityEventSeverity severity) {
+    return switch (severity) {
+      SecurityEventSeverity.low => const Color(0xFF4F7D61),
+      SecurityEventSeverity.medium => LumaTheme.lumaOrange,
+      SecurityEventSeverity.high => const Color(0xFFC45A3C),
+      SecurityEventSeverity.critical => const Color(0xFFB33A3A),
+      SecurityEventSeverity.unknown => const Color(0xFF756D65),
+    };
+  }
+
+  static String _severityLabel(SecurityEventSeverity severity) {
+    return switch (severity) {
+      SecurityEventSeverity.low => 'Niedrig',
+      SecurityEventSeverity.medium => 'Hinweis',
+      SecurityEventSeverity.high => 'Wichtig',
+      SecurityEventSeverity.critical => 'Kritisch',
+      SecurityEventSeverity.unknown => 'Sicherheit',
+    };
+  }
+
+  static IconData _eventIcon(String type) {
+    return switch (type.trim().toLowerCase()) {
+      'successful_login' => Icons.login_rounded,
+      'device_registered' => Icons.add_to_home_screen_rounded,
+      'device_trusted' => Icons.verified_user_outlined,
+      'device_deactivated' => Icons.phonelink_erase_rounded,
+      'remote_logout' => Icons.logout_rounded,
+      'phone_changed' || 'phone_verified' => Icons.phone_android_rounded,
+      'two_factor_enabled' || 'two_factor_disabled' => Icons.security_rounded,
+      'backup_codes_generated' ||
+      'backup_codes_reset' => Icons.password_rounded,
+      'password_reset_requested' || 'password_changed' => Icons.key_rounded,
+      _ => Icons.shield_outlined,
+    };
+  }
+}
+
 class _DeviceCard extends StatelessWidget {
-  const _DeviceCard({
-    required this.device,
-    required this.isCurrentDevice,
-  });
+  const _DeviceCard({required this.device, required this.isCurrentDevice});
 
   final SecurityDeviceModel device;
   final bool isCurrentDevice;
@@ -660,20 +894,24 @@ class _DeviceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor =
-        isDark ? LumaTheme.darkSurfaceSoft : const Color(0xFFFFFCF8);
+    final cardColor = isDark
+        ? LumaTheme.darkSurfaceSoft
+        : const Color(0xFFFFFCF8);
     final borderColor = isDark
         ? Colors.white.withValues(alpha: 0.07)
         : const Color(0xFFE8DCCE);
-    final textPrimary =
-        isDark ? LumaTheme.darkTextPrimary : const Color(0xFF102033);
-    final textSecondary =
-        isDark ? LumaTheme.darkTextSecondary : const Color(0xFF756D65);
+    final textPrimary = isDark
+        ? LumaTheme.darkTextPrimary
+        : const Color(0xFF102033);
+    final textSecondary = isDark
+        ? LumaTheme.darkTextSecondary
+        : const Color(0xFF756D65);
 
     final activity = device.lastSeenAt ?? device.lastLoginAt;
     final stateLabel = device.active ? 'Aktiv' : 'Nicht aktiv';
-    final trustLabel =
-        device.trusted ? 'Vertrauenswürdig' : 'Nicht als vertrauenswürdig markiert';
+    final trustLabel = device.trusted
+        ? 'Vertrauenswürdig'
+        : 'Nicht als vertrauenswürdig markiert';
 
     return Container(
       padding: const EdgeInsets.fromLTRB(15, 14, 15, 14),
@@ -771,8 +1009,9 @@ class _DeviceBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor =
-        isDark ? LumaTheme.darkTextSecondary : const Color(0xFF625A52);
+    final textColor = isDark
+        ? LumaTheme.darkTextSecondary
+        : const Color(0xFF625A52);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -806,15 +1045,18 @@ class _InlineInfoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor =
-        isDark ? LumaTheme.darkSurfaceSoft : const Color(0xFFFFFCF8);
+    final cardColor = isDark
+        ? LumaTheme.darkSurfaceSoft
+        : const Color(0xFFFFFCF8);
     final borderColor = isDark
         ? Colors.white.withValues(alpha: 0.07)
         : const Color(0xFFE8DCCE);
-    final textPrimary =
-        isDark ? LumaTheme.darkTextPrimary : const Color(0xFF102033);
-    final textSecondary =
-        isDark ? LumaTheme.darkTextSecondary : const Color(0xFF756D65);
+    final textPrimary = isDark
+        ? LumaTheme.darkTextPrimary
+        : const Color(0xFF102033);
+    final textSecondary = isDark
+        ? LumaTheme.darkTextSecondary
+        : const Color(0xFF756D65);
 
     return Container(
       padding: const EdgeInsets.all(15),
@@ -872,10 +1114,7 @@ class _ScrollableCenter extends StatelessWidget {
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: constraints.maxHeight),
             child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: child,
-              ),
+              child: Padding(padding: const EdgeInsets.all(24), child: child),
             ),
           ),
         );
@@ -898,15 +1137,18 @@ class _SecurityIntro extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor =
-        isDark ? LumaTheme.darkSurfaceSoft : const Color(0xFFFFFCF8);
+    final cardColor = isDark
+        ? LumaTheme.darkSurfaceSoft
+        : const Color(0xFFFFFCF8);
     final borderColor = isDark
         ? Colors.white.withValues(alpha: 0.07)
         : const Color(0xFFE8DCCE);
-    final textPrimary =
-        isDark ? LumaTheme.darkTextPrimary : const Color(0xFF102033);
-    final textSecondary =
-        isDark ? LumaTheme.darkTextSecondary : const Color(0xFF756D65);
+    final textPrimary = isDark
+        ? LumaTheme.darkTextPrimary
+        : const Color(0xFF102033);
+    final textSecondary = isDark
+        ? LumaTheme.darkTextSecondary
+        : const Color(0xFF756D65);
 
     final protectedCount = <bool>[
       emailVerified,
@@ -992,10 +1234,12 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimary =
-        isDark ? LumaTheme.darkTextPrimary : const Color(0xFF102033);
-    final textSecondary =
-        isDark ? LumaTheme.darkTextSecondary : const Color(0xFF756D65);
+    final textPrimary = isDark
+        ? LumaTheme.darkTextPrimary
+        : const Color(0xFF102033);
+    final textSecondary = isDark
+        ? LumaTheme.darkTextSecondary
+        : const Color(0xFF756D65);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -1055,8 +1299,9 @@ class _SecurityCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor =
-        isDark ? LumaTheme.darkSurfaceSoft : const Color(0xFFFFFCF8);
+    final cardColor = isDark
+        ? LumaTheme.darkSurfaceSoft
+        : const Color(0xFFFFFCF8);
     final borderColor = isDark
         ? Colors.white.withValues(alpha: 0.07)
         : const Color(0xFFE8DCCE);
@@ -1086,10 +1331,12 @@ class _StatusRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimary =
-        isDark ? LumaTheme.darkTextPrimary : const Color(0xFF102033);
-    final textSecondary =
-        isDark ? LumaTheme.darkTextSecondary : const Color(0xFF756D65);
+    final textPrimary = isDark
+        ? LumaTheme.darkTextPrimary
+        : const Color(0xFF102033);
+    final textSecondary = isDark
+        ? LumaTheme.darkTextSecondary
+        : const Color(0xFF756D65);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
@@ -1150,12 +1397,7 @@ class _CardDivider extends StatelessWidget {
         ? Colors.white.withValues(alpha: 0.06)
         : const Color(0xFFEDE5DD);
 
-    return Divider(
-      height: 1,
-      thickness: 1,
-      indent: 64,
-      color: color,
-    );
+    return Divider(height: 1, thickness: 1, indent: 64, color: color);
   }
 }
 
@@ -1173,15 +1415,18 @@ class _RemoteLogoutCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor =
-        isDark ? LumaTheme.darkSurfaceSoft : const Color(0xFFFFFCF8);
+    final cardColor = isDark
+        ? LumaTheme.darkSurfaceSoft
+        : const Color(0xFFFFFCF8);
     final borderColor = isDark
         ? Colors.white.withValues(alpha: 0.07)
         : const Color(0xFFE8DCCE);
-    final textPrimary =
-        isDark ? LumaTheme.darkTextPrimary : const Color(0xFF102033);
-    final textSecondary =
-        isDark ? LumaTheme.darkTextSecondary : const Color(0xFF756D65);
+    final textPrimary = isDark
+        ? LumaTheme.darkTextPrimary
+        : const Color(0xFF102033);
+    final textSecondary = isDark
+        ? LumaTheme.darkTextSecondary
+        : const Color(0xFF756D65);
 
     final sessionLabel = otherActiveDeviceCount == 1
         ? '1 weitere aktive Sitzung'
@@ -1272,10 +1517,7 @@ class _RemoteLogoutCard extends StatelessWidget {
 }
 
 class _ErrorCard extends StatelessWidget {
-  const _ErrorCard({
-    required this.message,
-    required this.onRetry,
-  });
+  const _ErrorCard({required this.message, required this.onRetry});
 
   final String message;
   final Future<void> Function() onRetry;
@@ -1283,15 +1525,18 @@ class _ErrorCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor =
-        isDark ? LumaTheme.darkSurfaceSoft : const Color(0xFFFFFCF8);
+    final cardColor = isDark
+        ? LumaTheme.darkSurfaceSoft
+        : const Color(0xFFFFFCF8);
     final borderColor = isDark
         ? Colors.white.withValues(alpha: 0.07)
         : const Color(0xFFE8DCCE);
-    final textPrimary =
-        isDark ? LumaTheme.darkTextPrimary : const Color(0xFF102033);
-    final textSecondary =
-        isDark ? LumaTheme.darkTextSecondary : const Color(0xFF756D65);
+    final textPrimary = isDark
+        ? LumaTheme.darkTextPrimary
+        : const Color(0xFF102033);
+    final textSecondary = isDark
+        ? LumaTheme.darkTextSecondary
+        : const Color(0xFF756D65);
 
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 460),
