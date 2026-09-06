@@ -1035,10 +1035,23 @@ import sharp = require("sharp");
             userId,
           });
 
-          // 1. Kommunikationsmetadaten anderer Teilnehmer anonymisieren.
+          // 1. Messenger-Nachrichten des gelöschten Kontos neutralisieren.
+          //
+          // Nachrichten bleiben als Platzhalter in bestehenden Unterhaltungen
+          // erhalten, enthalten danach aber weder Text noch Medienreferenzen.
+          // Dadurch entstehen nach der Storage-Bereinigung keine toten Anhänge.
+          await anonymizeDeletedUserMessages(userId);
+
+          // 2. Eindeutig dem Konto gehörende Firebase-Storage-Dateien entfernen.
+          //
+          // Das geschieht bewusst VOR dem Entfernen der Firestore-Dokumente,
+          // damit alle noch benötigten Conversation-Bezüge verfügbar sind.
+          await deleteAccountOwnedStorage(userId);
+
+          // 3. Kommunikationsmetadaten anderer Teilnehmer anonymisieren.
           await anonymizeDeletedUserInConversations(userId);
 
-          // 2. Nutzerbezogene Kernobjekte außerhalb von users/{uid} entfernen.
+          // 4. Nutzerbezogene Kernobjekte außerhalb von users/{uid} entfernen.
           //
           // Diese Collections liegen nicht unter dem User-Dokument und würden
           // durch db.recursiveDelete(users/{uid}) sonst erhalten bleiben.
@@ -1103,7 +1116,7 @@ import sharp = require("sharp");
             userId,
           );
 
-          // 3. Das komplette User-Dokument mit allen Subcollections entfernen.
+          // 5. Das komplette User-Dokument mit allen Subcollections entfernen.
           // Dazu gehören u. a. Profil, Einstellungen, Notification-Tokens,
           // Geräte-/Sicherheitsdaten und Legal-Consent-Unterlagen unter users/{uid}.
           const userReference = db
@@ -1112,10 +1125,10 @@ import sharp = require("sharp");
 
           await db.recursiveDelete(userReference);
 
-          // 4. Firebase Auth ganz am Ende entfernen.
+          // 6. Firebase Auth ganz am Ende entfernen.
           await getAuth().deleteUser(userId);
 
-          // 5. Erst NACH der bestätigten Auth-Löschung wird die Bestätigungs-Mail
+          // 7. Erst NACH der bestätigten Auth-Löschung wird die Bestätigungs-Mail
           // versendet. Dadurch kann niemals eine Löschbestätigung verschickt werden,
           // obwohl das Firebase-Konto noch existiert.
           const confirmationEmailSent =
@@ -1135,6 +1148,8 @@ import sharp = require("sharp");
             accountDeleted: true,
             profileDeleted: true,
             userContentDeleted: true,
+            storageDeleted: true,
+            messengerMessagesAnonymized: true,
             conversationsAnonymized: true,
             confirmationEmailSent,
           };
@@ -1151,6 +1166,186 @@ import sharp = require("sharp");
         }
       },
     );
+
+    async function anonymizeDeletedUserMessages(
+      userId: string,
+    ): Promise<void> {
+      const cleanedUserId = cleanString(userId);
+
+      if (!cleanedUserId) {
+        throw new HttpsError(
+          "invalid-argument",
+          "Für die Messenger-Bereinigung fehlt die Nutzer-ID.",
+        );
+      }
+
+      const conversationSnapshot = await db
+        .collection("conversations")
+        .where("participantIds", "array-contains", cleanedUserId)
+        .get();
+
+      if (conversationSnapshot.empty) {
+        return;
+      }
+
+      let anonymizedMessageCount = 0;
+      const batchSize = 400;
+
+      for (const conversationDocument of conversationSnapshot.docs) {
+        const conversationId = cleanString(conversationDocument.id);
+        if (!conversationId) continue;
+
+        const messageSnapshot = await conversationDocument.ref
+          .collection("messages")
+          .where("senderUserId", "==", cleanedUserId)
+          .get();
+
+        if (!messageSnapshot.empty) {
+          for (
+            let offset = 0;
+            offset < messageSnapshot.docs.length;
+            offset += batchSize
+          ) {
+            const batch = db.batch();
+            const messageDocuments = messageSnapshot.docs.slice(
+              offset,
+              offset + batchSize,
+            );
+
+            for (const messageDocument of messageDocuments) {
+              batch.set(
+                messageDocument.ref,
+                {
+                  text: "",
+                  imageUrl: FieldValue.delete(),
+                  thumbnailUrl: FieldValue.delete(),
+                  mediaStoragePath: FieldValue.delete(),
+                  localMediaPath: FieldValue.delete(),
+                  uploadId: FieldValue.delete(),
+                  uploadFailureReason: FieldValue.delete(),
+                  mimeType: FieldValue.delete(),
+                  fileSizeBytes: FieldValue.delete(),
+                  photoViewTimerSeconds: FieldValue.delete(),
+                  audioDurationMilliseconds: FieldValue.delete(),
+                  audioProgress: FieldValue.delete(),
+                  hasBlurEffect: false,
+                  mediaTransferState: "none",
+                  mediaUploadState: "none",
+                  deletedAt: FieldValue.serverTimestamp(),
+                  deletedByUserId: FieldValue.delete(),
+                  deletedForAccountDeletion: true,
+                },
+                {merge: true},
+              );
+            }
+
+            await batch.commit();
+            anonymizedMessageCount += messageDocuments.length;
+          }
+        }
+
+        const conversationData = conversationDocument.data() ?? {};
+        if (
+          cleanString(conversationData.lastMessageSenderId) === cleanedUserId
+        ) {
+          await conversationDocument.ref.set(
+            {
+              lastMessagePreview: "Diese Nachricht wurde gelöscht",
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            {merge: true},
+          );
+        }
+      }
+
+      logger.info("ACCOUNT_DELETE_MESSENGER_MESSAGES_ANONYMIZED", {
+        userId: cleanedUserId,
+        conversationCount: conversationSnapshot.size,
+        anonymizedMessageCount,
+      });
+    }
+
+    async function deleteAccountOwnedStorage(
+      userId: string,
+    ): Promise<void> {
+      const cleanedUserId = cleanString(userId);
+
+      if (!cleanedUserId) {
+        throw new HttpsError(
+          "invalid-argument",
+          "Für die Storage-Bereinigung fehlt die Nutzer-ID.",
+        );
+      }
+
+      const bucket = getStorage().bucket();
+
+      // Diese Root-Pfade sind durch die aktuellen Luma-Storage-Regeln eindeutig
+      // an die Firebase UID des Nutzers gebunden.
+      const ownedPrefixes = new Set<string>([
+        `${feedImagesRoot}/${cleanedUserId}/`,
+        `profile_media/${cleanedUserId}/`,
+        `profile_moment_media/${cleanedUserId}/`,
+        `story_media/${cleanedUserId}/`,
+        `verification_documents/${cleanedUserId}/`,
+      ]);
+
+      // Messenger-Unterhaltungen bleiben für die anderen Teilnehmer bestehen.
+      // Medien sind jedoch innerhalb jeder Unterhaltung zusätzlich nach
+      // senderUserId getrennt. Dadurch können nur die Dateien des gelöschten
+      // Nutzers entfernt werden, ohne fremde Messenger-Medien anzutasten.
+      const conversationSnapshot = await db
+        .collection("conversations")
+        .where("participantIds", "array-contains", cleanedUserId)
+        .get();
+
+      for (const conversationDocument of conversationSnapshot.docs) {
+        const conversationId = cleanString(conversationDocument.id);
+        if (!conversationId) {
+          continue;
+        }
+
+        ownedPrefixes.add(
+          `messenger_media/${conversationId}/images/${cleanedUserId}/`,
+        );
+        ownedPrefixes.add(
+          `messenger_media/${conversationId}/audio/${cleanedUserId}/`,
+        );
+        ownedPrefixes.add(
+          `messenger_media/${conversationId}/files/${cleanedUserId}/`,
+        );
+      }
+
+      logger.info("ACCOUNT_DELETE_STORAGE_STARTED", {
+        userId: cleanedUserId,
+        prefixCount: ownedPrefixes.size,
+        conversationCount: conversationSnapshot.size,
+      });
+
+      // Absichtlich nacheinander: Falls Firebase Storage einen konkreten Prefix
+      // nicht löschen kann, bricht die Kontolöschung vor Firestore/Auth ab.
+      // Ein erneuter Versuch ist sicher, weil bereits gelöschte Prefixe leer sind.
+      for (const prefix of ownedPrefixes) {
+        try {
+          await bucket.deleteFiles({
+            prefix,
+          });
+        } catch (error) {
+          logger.error("ACCOUNT_DELETE_STORAGE_PREFIX_FAILED", {
+            userId: cleanedUserId,
+            prefix,
+            error,
+          });
+
+          throw error;
+        }
+      }
+
+      logger.info("ACCOUNT_DELETE_STORAGE_COMPLETED", {
+        userId: cleanedUserId,
+        prefixCount: ownedPrefixes.size,
+      });
+    }
+
 
     function requireRecentAccountDeletionAuthentication(
       rawAuthTime: unknown,
